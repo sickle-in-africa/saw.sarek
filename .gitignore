@@ -1,3 +1,5 @@
+pipelines/nextflow.config
+
 *.code-workspace
 *.pyc
 .DS_Store
