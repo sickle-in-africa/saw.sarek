@@ -266,7 +266,14 @@ if (!params.input && params.sentieon) {
         case 'mapping': break
         case 'preparerecalibration': tsvPath = "${params.outdir}/Preprocessing/TSV/duplicates_marked_no_table.tsv"; break
         case 'recalibrate': tsvPath = "${params.outdir}/Preprocessing/TSV/duplicates_marked.tsv"; break
-        case 'variantcalling': tsvPath = "${params.outdir}/Preprocessing/TSV/recalibrated.tsv"; break
+        case 'variantcalling': 
+          if (!params.genomes[params.genome].dbsnp && !params.genomes[params.genome].known_indels) {
+            tsvPath = "${params.outdir}/Preprocessing/TSV/duplicates_marked_no_table.tsv"
+          }
+          else {
+            tsvPath = "${params.outdir}/Preprocessing/TSV/recalibrated.tsv"
+          }
+          break
         case 'controlfreec': tsvPath = "${params.outdir}/VariantCalling/TSV/control-freec_mpileup.tsv"; break
         case 'annotate': break
         default: exit 1, "Unknown step ${step}"
