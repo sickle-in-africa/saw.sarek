@@ -10,6 +10,11 @@ custom_runName = getCustomRunName()
 save_bam_mapped = getSavedBamMapped()
 tsvPath = getInputTsvPath()
 
+initializeParamsObject(step, tools)
+
+summaryMap = getSummaryMapFromParamsObjectAndArgs(step, custom_runName, skipQC, tools)
+
+checkHostname()
 checkInputReferenceGenomeExists()
 checkInputStepIsValid(step)
 checkInputToolsExist(tools)
@@ -20,6 +25,10 @@ checkInputReadStructureParametersValid()
 checkAwsBatchSettings()
 checkInputTsvPath(tsvPath)
 
+printNfcoreSarekWelcomeGraphic()
+printSummaryMessage(summaryMap)
+printMutec2Warning(tools)
+
 ch_multiqc_config = getMultiqcConfigFile()
 ch_multiqc_custom_config = getMultiqcCustomConfigFileAsChannel()
 ch_output_docs = getOutputDocsFile()
@@ -28,9 +37,6 @@ ch_output_docs_images = getOutputDocsImagesFile()
 inputSample = getInputSampleListAsChannel(tsvPath)
 
 (genderMap, statusMap, inputSample) = extractInfos(inputSample)
-
-
-initializeParamsObject(step, tools)
 
 // Initialize channels with files based on params
 ch_ac_loci = params.ac_loci && 'ascat' in tools ? Channel.value(file(params.ac_loci)) : "null"
@@ -63,13 +69,6 @@ ch_target_bed = params.target_bed ? Channel.value(file(params.target_bed)) : "nu
 ch_read_structure1 = params.read_structure1 ? Channel.value(params.read_structure1) : "null"
 ch_read_structure2 = params.read_structure2 ? Channel.value(params.read_structure2) : "null"
 
-summaryMap = getSummaryMap()
-
-printNfcoreSarekWelcomeGraphic()
-printSummaryMessage(summaryMap)
-printMutec2Warning(tools)
-
-checkHostname()
 
 Channel.from(summaryMap.collect{ [it.key, it.value] })
     .map { k,v -> "<dt>$k</dt><dd><samp>${v ?: '<span style=\"color:#999999;\">N/A</a>'}</samp></dd>" }
@@ -760,60 +759,7 @@ singleBam = singleBam.map {
 }
 singleBam = singleBam.dump(tag:'Single BAM')
 
-// STEP 1': MAPPING READS TO REFERENCE GENOME WITH SENTIEON BWA MEM
-
-process Sentieon_MapReads {
-    label 'cpus_max'
-    label 'memory_max'
-    label 'sentieon'
-
-    tag "${idPatient}-${idRun}"
-
-    input:
-        set idPatient, idSample, idRun, file(inputFile1), file(inputFile2) from input_pair_reads_sentieon
-        file(bwaIndex) from ch_bwa
-        file(fasta) from ch_fasta
-        file(fastaFai) from ch_fai
-
-    output:
-        set idPatient, idSample, idRun, file("${idSample}_${idRun}.bam") into bam_sentieon_mapped
-
-    when: params.sentieon
-
-    script:
-    // -K is an hidden option, used to fix the number of reads processed by bwa mem
-    // Chunk size can affect bwa results, if not specified,
-    // the number of threads can change which can give not deterministic result.
-    // cf https://github.com/CCDG/Pipeline-Standardization/blob/master/PipelineStandard.md
-    // and https://github.com/gatk-workflows/gatk4-data-processing/blob/8ffa26ff4580df4ac3a5aa9e272a4ff6bab44ba2/processing-for-variant-discovery-gatk4.b37.wgs.inputs.json#L29
-    CN = params.sequencing_center ? "CN:${params.sequencing_center}\\t" : ""
-    readGroup = "@RG\\tID:${idRun}\\t${CN}PU:${idRun}\\tSM:${idSample}\\tLB:${idSample}\\tPL:illumina"
-    // adjust mismatch penalty for tumor samples
-    status = statusMap[idPatient, idSample]
-    extra = status == 1 ? "-B 3" : ""
-    """
-    sentieon bwa mem -K 100000000 -R \"${readGroup}\" ${extra} -t ${task.cpus} -M ${fasta} \
-    ${inputFile1} ${inputFile2} | \
-    sentieon util sort -r ${fasta} -o ${idSample}_${idRun}.bam -t ${task.cpus} --sam2bam -i -
-    """
-}
-
-bam_sentieon_mapped = bam_sentieon_mapped.dump(tag:'Sentieon Mapped BAM')
-// Sort BAM whether they are standalone or should be merged
-
-singleBamSentieon = Channel.create()
-multipleBamSentieon = Channel.create()
-bam_sentieon_mapped.groupTuple(by:[0, 1])
-    .choice(singleBamSentieon, multipleBamSentieon) {it[2].size() > 1 ? 1 : 0}
-singleBamSentieon = singleBamSentieon.map {
-    idPatient, idSample, idRun, bam ->
-    [idPatient, idSample, bam]
-}
-singleBamSentieon = singleBamSentieon.dump(tag:'Single BAM')
-
 // STEP 1.5: MERGING BAM FROM MULTIPLE LANES
-
-multipleBam = multipleBam.mix(multipleBamSentieon)
 
 process MergeBamMapped {
     label 'cpus_8'
@@ -834,32 +780,13 @@ process MergeBamMapped {
 
 bam_mapped_merged = bam_mapped_merged.dump(tag:'Merged BAM')
 
-bam_mapped_merged = bam_mapped_merged.mix(singleBam,singleBamSentieon)
+bam_mapped_merged = bam_mapped_merged.mix(singleBam)
 
 (bam_mapped_merged, bam_sentieon_mapped_merged) = bam_mapped_merged.into(2)
 
-if (!params.sentieon) bam_sentieon_mapped_merged.close()
-else bam_mapped_merged.close()
+bam_sentieon_mapped_merged.close()
 
 bam_mapped_merged = bam_mapped_merged.dump(tag:'BAMs for MD')
-bam_sentieon_mapped_merged = bam_sentieon_mapped_merged.dump(tag:'Sentieon BAMs to Index')
-
-process IndexBamMergedForSentieon {
-    label 'cpus_8'
-
-    tag "${idPatient}-${idSample}"
-
-    input:
-        set idPatient, idSample, file("${idSample}.bam") from bam_sentieon_mapped_merged
-
-    output:
-        set idPatient, idSample, file("${idSample}.bam"), file("${idSample}.bam.bai") into bam_sentieon_mapped_merged_indexed
-
-    script:
-    """
-    samtools index ${idSample}.bam
-    """
-}
 
 (bam_mapped_merged, bam_mapped_merged_to_index) = bam_mapped_merged.into(2)
 
@@ -1675,23 +1602,30 @@ def printNfcoreSarekWelcomeGraphic() {
   log.info nfcoreHeader()
 }
 
-def getSummaryMap() {
+def getSummaryMapFromParamsObjectAndArgs(step, custom_runName, skipQC, tools) {
+  // also requires params and workflow maps to be initialized
+  
   def summary = [:]
-  if (workflow.revision)          summary['Pipeline Release']    = workflow.revision
-  summary['Run Name']          = custom_runName ?: workflow.runName
-  summary['Max Resources']     = "${params.max_memory} memory, ${params.max_cpus} cpus, ${params.max_time} time per job"
-  if (workflow.containerEngine)   summary['Container']         = "${workflow.containerEngine} - ${workflow.container}"
 
-  summary['Input']             = params.input
-  summary['Step']              = step
-  summary['Genome']            = params.genome
+  if (workflow.revision) summary['Pipeline Release'] = workflow.revision
 
-  if (params.no_intervals && step != 'annotate')  summary['Intervals']         = 'Do not use'
-  summary['Nucleotides/s']     = params.nucleotides_per_second
-  if (params.sentieon)            summary['Sention']                           = "Using Sentieon for Preprocessing and/or Variant Calling"
-  if (params.skip_qc)             summary['QC tools skipped']                  = skipQC.join(', ')
-  if (params.target_bed)          summary['Target BED']                        = params.target_bed
-  if (params.tools)               summary['Tools']                             = tools.join(', ')
+  summary['Run Name'] = custom_runName ?: workflow.runName
+  summary['Max Resources'] = "${params.max_memory} memory, ${params.max_cpus} cpus, ${params.max_time} time per job"
+
+  if (workflow.containerEngine) summary['Container']  = "${workflow.containerEngine} - ${workflow.container}"
+
+  summary['Input'] = params.input
+  summary['Step']  = step
+  summary['Genome'] = params.genome
+
+  if (params.no_intervals && step != 'annotate')  summary['Intervals'] = 'Do not use'
+
+  summary['Nucleotides/s'] = params.nucleotides_per_second
+
+  if (params.sentieon) summary['Sention'] = "Using Sentieon for Preprocessing and/or Variant Calling"
+  if (params.skip_qc) summary['QC tools skipped']  = skipQC.join(', ')
+  if (params.target_bed) summary['Target BED']  = params.target_bed
+  if (params.tools) summary['Tools'] = tools.join(', ')
 
   if (params.trim_fastq || params.split_fastq) summary['Modify fastqs (trim/split)'] = ""
 
@@ -1704,6 +1638,7 @@ def getSummaryMap() {
       summary['NextSeq Trim']       = "${params.trim_nextseq} bp"
       summary['Saved Trimmed Fastq'] = params.save_trimmed ? 'Yes' : 'No'
   }
+
   if (params.split_fastq)          summary['Reads in fastq']                   = params.split_fastq
 
   summary['MarkDuplicates'] = "Options"
