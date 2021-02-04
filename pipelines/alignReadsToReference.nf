@@ -412,6 +412,9 @@ if (step in ['preparerecalibration', 'recalibrate', 'variantcalling', 'controlfr
     inputPairReads.close()
 } else inputSample.choice(inputPairReads, inputBam) {hasExtension(it[3], "bam") ? 1 : 0}
 
+inputBam = inputBam.dump(tag: "inputBam")
+inputPairReads = inputPairReads.dump(tag: "inputPairReads")
+
 (inputBam, inputBamFastQC) = inputBam.into(2)
 
 // Removing inputFile2 which is null in case of uBAM

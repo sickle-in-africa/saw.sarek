@@ -37,7 +37,8 @@ include {
 
     printSummaryMessage;
 
-    extractInfos
+    extractInfos;
+    hasExtension
 } from "${params.modulesDir}/sarek.nf"
 
 include {
@@ -52,8 +53,22 @@ include {
 } from "${params.modulesDir}/indices.nf"
 
 include {
-    CreateIntervalBeds
+    CreateIntervalBeds;
+    FastQCFQ;
+    FastQCBAM;
+    TrimGalore;
+    UMIFastqToBAM;
+    UMIMapBamFile;
+    GroupReadsByUmi;
+    CallMolecularConsensusReads
 } from "${params.modulesDir}/preprocess.nf"
+
+include {
+    MapReads;
+    MergeBamMapped;
+    IndexBamFile;
+    MarkDuplicates
+} from "${params.modulesDir}/alignment.nf"
 
 printHelpMessageAndExitIfUserAsks()
 
@@ -108,6 +123,10 @@ workflow {
     ch_fai = params.fasta_fai && !('annotate' in step) ? Channel.value(file(params.fasta_fai)) : "null"
     ch_intervals = params.intervals && !params.no_intervals && !('annotate' in step) ? Channel.value(file(params.intervals)) : "null"
 
+    // Optional values, not defined within the params.genomes[params.genome] scope
+    ch_read_structure1 = params.read_structure1 ? Channel.value(params.read_structure1) : "null"
+    ch_read_structure2 = params.read_structure2 ? Channel.value(params.read_structure2) : "null"
+
     BuildBWAindexes(ch_fasta).set { bwa_built }
     ch_bwa = params.bwa ? Channel.value(file(params.bwa)) : bwa_built
 
@@ -134,10 +153,209 @@ workflow {
 
     /*  preprocess reads  */
 
-    CreateIntervalBeds(ch_intervals_update).set { bedIntervals }
+    CreateIntervalBeds(ch_intervals_update).flatten().set { bedIntervals }
+
+    bedIntervals = bedIntervals
+        .map { intervalFile ->
+            def duration = 0.0
+            for (line in intervalFile.readLines()) {
+                final fields = line.split('\t')
+                if (fields.size() >= 5) duration += fields[4].toFloat()
+                else {
+                    start = fields[1].toInteger()
+                    end = fields[2].toInteger()
+                    duration += (end - start) / params.nucleotides_per_second
+                }
+            }
+            return [duration, intervalFile]
+        }
+        .toSortedList({ a, b -> b[0] <=> a[0] })
+        .flatten().collate(2)
+        .map{duration, intervalFile -> intervalFile}
+        .dump(tag:'bedintervals')
+
+    if (params.no_intervals && step != 'annotate') {
+        file("${params.outdir}/no_intervals.bed").text = "no_intervals\n"
+        bedIntervals = Channel.from(file("${params.outdir}/no_intervals.bed"))
+    }
+
+    intBaseRecalibrator = bedIntervals
+    intApplyBQSR = bedIntervals
+    intHaplotypeCaller = bedIntervals
+    intFreebayesSingle = bedIntervals
+    intMpileup = bedIntervals
+
+    inputSample.branch {
+        bam: hasExtension(it[3], "bam")
+        pairReads: !hasExtension(it[3], "bam")
+    }
+    .set { input }
+    inputBam = input.bam
+    inputPairReads = input.pairReads
+
+    inputBam.dump(tag: "inputBam")
+    inputPairReads.dump(tag: "inputPairReads")
+
+    inputBamFastQC = inputBam
+
+    // Removing inputFile2 which is null in case of uBAM
+    inputBamFastQC = inputBamFastQC.map {
+        idPatient, idSample, idRun, inputFile1, inputFile2 ->
+        [idPatient, idSample, idRun, inputFile1]
+    }
+
+    if (params.split_fastq){
+        inputPairReads = inputPairReads
+            // newly splitfastq are named based on split, so the name is easier to catch
+            .splitFastq(by: params.split_fastq, compress:true, file:"split", pe:true)
+            .map {idPatient, idSample, idRun, reads1, reads2 ->
+                // The split fastq read1 is the 4th element (indexed 3) its name is split_3
+                // The split fastq read2's name is split_4
+                // It's followed by which split it's acutally based on the mother fastq file
+                // Index start at 1
+                // Extracting the index to get a new IdRun
+                splitIndex = reads1.fileName.toString().minus("split_3.").minus(".gz")
+                newIdRun = idRun + "_" + splitIndex
+                // Giving the files a new nice name
+                newReads1 = file("${idSample}_${newIdRun}_R1.fastq.gz")
+                newReads2 = file("${idSample}_${newIdRun}_R2.fastq.gz")
+                [idPatient, idSample, newIdRun, reads1, reads2]
+            }
+    }
+
+    inputPairReads.dump(tag:'INPUT')
+
+    inputPairReadsTrimGalore = inputPairReads
+    inputPairReadsFastQC = inputPairReads
+    inputPairReadsUMI = inputPairReads
+
+    FastQCFQ(inputPairReadsFastQC).set { fastQCFQReport }
+
+    FastQCBAM(inputBamFastQC).set { fastQCBAMReport }
+
+    fastQCReport = fastQCFQReport.mix(fastQCBAMReport)
+
+    fastQCReport.dump(tag:'FastQC')
+
+    (trimGaloreReport, outputPairReadsTrimGalore) = TrimGalore(inputPairReadsTrimGalore)
+
+    /*  UMIs processing  */
+
+    umi_converted_bams_ch = UMIFastqToBAM(inputPairReadsUMI, ch_read_structure1, ch_read_structure2)
+
+    umi_aligned_bams_ch = UMIMapBamFile(umi_converted_bams_ch, ch_bwa, ch_fasta, ch_fai)
+
+    (umi_histogram_ch, umi_grouped_bams_ch) = GroupReadsByUmi(umi_aligned_bams_ch)
+
+    consensus_bam_ch = CallMolecularConsensusReads(umi_grouped_bams_ch)
+
+    /*  map reads to reference  */
+
+    input_pair_reads_sentieon = Channel.empty()
+
+    if (params.umi) {
+        inputPairReads = inputPairReads.dump(tag:'INPUT before mapping')
+        if (params.sentieon) input_pair_reads_sentieon = consensus_bam_ch
+        else inputPairReads = consensus_bam_ch
+    }
+    else {
+        if (params.trim_fastq) inputPairReads = outputPairReadsTrimGalore
+        else inputPairReads = inputPairReads.mix(inputBam)
+        inputPairReads = inputPairReads.dump(tag:'INPUT before mapping')
+
+        input_pair_reads_sentieon = inputPairReads
+    }
+
+    (bamMapped, bamMappedBamQC) = MapReads(inputPairReads, ch_bwa, ch_fasta, ch_fai)
+
+    bamMapped.dump(tag:'Mapped BAM')
+
+    bamMapped
+        .groupTuple(by:[0, 1])
+        .branch {
+            single: !(it[2].size() > 1)
+            multiple: it[2].size() > 1
+        }
+        .set { result }
+
+    singleBam = result.single.dump(tag: "single")
+    multipleBam = result.multiple.dump(tag: "multiple")
+    
+    singleBam = singleBam.map {
+        idPatient, idSample, idRun, bam ->
+        [idPatient, idSample, bam]
+    }
+
+    singleBam.dump(tag:'Single BAM')
+
+    bam_mapped_merged = MergeBamMapped(multipleBam)
+
+    //bam_mapped_merged.dump(tag:'Merged BAM')
+
+    bam_mapped_merged = bam_mapped_merged.mix(singleBam)
+
+    bam_sentieon_mapped_merged = bam_mapped_merged
+
+    bam_mapped_merged.dump(tag:'BAMs for MD')
+
+    bam_mapped_merged_to_index = bam_mapped_merged
+
+    (bam_mapped_merged_indexed, tsv_bam_indexed) = IndexBamFile(bam_mapped_merged_to_index)
+
+    tsv_bam_indexed_sample = tsv_bam_indexed
+
+    // Creating a TSV file to restart from this step
+    tsv_bam_indexed.map { idPatient, idSample ->
+        gender = genderMap[idPatient]
+        status = statusMap[idPatient, idSample]
+        bam = "${params.outdir}/Preprocessing/${idSample}/Mapped/${idSample}.bam"
+        bai = "${params.outdir}/Preprocessing/${idSample}/Mapped/${idSample}.bam.bai"
+        "${idPatient}\t${gender}\t${status}\t${idSample}\t${bam}\t${bai}\n"
+    }.collectFile(
+        name: 'mapped.tsv', sort: true, storeDir: "${params.outdir}/Preprocessing/TSV"
+    )
+
+    tsv_bam_indexed_sample
+        .collectFile(storeDir: "${params.outdir}/Preprocessing/TSV") { idPatient, idSample ->
+            status = statusMap[idPatient, idSample]
+            gender = genderMap[idPatient]
+            bam = "${params.outdir}/Preprocessing/${idSample}/Mapped/${idSample}.bam"
+            bai = "${params.outdir}/Preprocessing/${idSample}/Mapped/${idSample}.bam.bai"
+            ["mapped_${idSample}.tsv", "${idPatient}\t${gender}\t${status}\t${idSample}\t${bam}\t${bai}\n"]
+    }
+
+    /*  mark duplicates  */
+
+    (bam_duplicates_marked, tsv_bam_duplicates_marked, duplicates_marked_report) = MarkDuplicates(bam_mapped_merged)
+
+    tsv_bam_duplicates_marked_sample = tsv_bam_duplicates_marked
+
+    // Creating a TSV file to restart from this step
+    tsv_bam_duplicates_marked.map { idPatient, idSample ->
+        gender = genderMap[idPatient]
+        status = statusMap[idPatient, idSample]
+        bam = "${params.outdir}/Preprocessing/${idSample}/DuplicatesMarked/${idSample}.md.bam"
+        bai = "${params.outdir}/Preprocessing/${idSample}/DuplicatesMarked/${idSample}.md.bam.bai"
+        "${idPatient}\t${gender}\t${status}\t${idSample}\t${bam}\t${bai}\n"
+    }.collectFile(
+        name: 'duplicates_marked_no_table.tsv', sort: true, storeDir: "${params.outdir}/Preprocessing/TSV"
+    )
+
+    tsv_bam_duplicates_marked_sample
+        .collectFile(storeDir: "${params.outdir}/Preprocessing/TSV") { idPatient, idSample ->
+            status = statusMap[idPatient, idSample]
+            gender = genderMap[idPatient]
+            bam = "${params.outdir}/Preprocessing/${idSample}/DuplicatesMarked/${idSample}.md.bam"
+            bai = "${params.outdir}/Preprocessing/${idSample}/DuplicatesMarked/${idSample}.md.bam.bai"
+            ["duplicates_marked_no_table_${idSample}.tsv", "${idPatient}\t${gender}\t${status}\t${idSample}\t${bam}\t${bai}\n"]
+    }
+
+
+    bam_duplicates_marked.dump(tag:'MD BAM')
+   
+    duplicates_marked_report.dump(tag:'MD Report')
 
 }
-
 
 
 def initializeParamsScope(inputStep, inputToolsList) {

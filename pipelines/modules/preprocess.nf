@@ -59,6 +59,227 @@ process CreateIntervalBeds {
         """
 }
 
+process FastQCFQ {
+    label 'FastQC'
+    label 'cpus_2'
+
+    tag "${idPatient}-${idRun}"
+
+    publishDir "${params.outdir}/Reports/${idSample}/FastQC/${idSample}_${idRun}", mode: params.publish_dir_mode
+
+    input:
+        tuple val(idPatient), val(idSample), val(idRun), file("${idSample}_${idRun}_R1.fastq.gz"), file("${idSample}_${idRun}_R2.fastq.gz")
+
+    output:
+        file("*.{html,zip}")
+
+    when: !('fastqc' in skipQC)
+
+    script:
+    """
+    fastqc -t 2 -q ${idSample}_${idRun}_R1.fastq.gz ${idSample}_${idRun}_R2.fastq.gz
+    """
+}
+
+process FastQCBAM {
+    label 'FastQC'
+    label 'cpus_2'
+
+    tag "${idPatient}-${idRun}"
+
+    publishDir "${params.outdir}/Reports/${idSample}/FastQC/${idSample}_${idRun}", mode: params.publish_dir_mode
+
+    input:
+        tuple val(idPatient), val(idSample), val(idRun), file("${idSample}_${idRun}.bam")
+
+    output:
+        file("*.{html,zip}")
+
+    when: !('fastqc' in skipQC)
+
+    script:
+    """
+    fastqc -t 2 -q ${idSample}_${idRun}.bam
+    """
+}
+
+process TrimGalore {
+    label 'TrimGalore'
+
+    tag "${idPatient}-${idRun}"
+
+    publishDir "${params.outdir}/Reports/${idSample}/TrimGalore/${idSample}_${idRun}", mode: params.publish_dir_mode,
+      saveAs: {filename ->
+        if (filename.indexOf("_fastqc") > 0) "FastQC/$filename"
+        else if (filename.indexOf("trimming_report.txt") > 0) "logs/$filename"
+        else if (params.save_trimmed) filename
+        else null
+      }
+
+    input:
+        tuple val(idPatient), val(idSample), val(idRun), file("${idSample}_${idRun}_R1.fastq.gz"), file("${idSample}_${idRun}_R2.fastq.gz")
+
+    output:
+        file("*.{html,zip,txt}")
+        tuple val(idPatient), val(idSample), val(idRun), file("${idSample}_${idRun}_R1_val_1.fq.gz"), file("${idSample}_${idRun}_R2_val_2.fq.gz")
+
+    when: params.trim_fastq
+
+    script:
+    // Calculate number of --cores for TrimGalore based on value of task.cpus
+    // See: https://github.com/FelixKrueger/TrimGalore/blob/master/Changelog.md#version-060-release-on-1-mar-2019
+    // See: https://github.com/nf-core/atacseq/pull/65
+    def cores = 1
+    if (task.cpus) {
+      cores = (task.cpus as int) - 4
+      if (cores < 1) cores = 1
+      if (cores > 4) cores = 4
+      }
+    c_r1 = params.clip_r1 > 0 ? "--clip_r1 ${params.clip_r1}" : ''
+    c_r2 = params.clip_r2 > 0 ? "--clip_r2 ${params.clip_r2}" : ''
+    tpc_r1 = params.three_prime_clip_r1 > 0 ? "--three_prime_clip_r1 ${params.three_prime_clip_r1}" : ''
+    tpc_r2 = params.three_prime_clip_r2 > 0 ? "--three_prime_clip_r2 ${params.three_prime_clip_r2}" : ''
+    nextseq = params.trim_nextseq > 0 ? "--nextseq ${params.trim_nextseq}" : ''
+    """
+    trim_galore \
+         --cores ${cores} \
+        --paired \
+        --fastqc \
+        --gzip \
+        ${c_r1} ${c_r2} \
+        ${tpc_r1} ${tpc_r2} \
+        ${nextseq} \
+        ${idSample}_${idRun}_R1.fastq.gz ${idSample}_${idRun}_R2.fastq.gz
+
+    mv *val_1_fastqc.html "${idSample}_${idRun}_R1.trimmed_fastqc.html"
+    mv *val_2_fastqc.html "${idSample}_${idRun}_R2.trimmed_fastqc.html"
+    mv *val_1_fastqc.zip "${idSample}_${idRun}_R1.trimmed_fastqc.zip"
+    mv *val_2_fastqc.zip "${idSample}_${idRun}_R2.trimmed_fastqc.zip"
+    """
+}
+
+// UMI - STEP 1 - ANNOTATE
+// the process needs to convert fastq to unmapped bam
+// and while doing the conversion, tag the bam field RX with the UMI sequence
+process UMIFastqToBAM {
+    publishDir "${params.outdir}/Reports/${idSample}/UMI/${idSample}_${idRun}", mode: params.publish_dir_mode
+
+    input:
+        tuple val(idPatient), val(idSample), val(idRun), file("${idSample}_${idRun}_R1.fastq.gz"), file("${idSample}_${idRun}_R2.fastq.gz")
+        val read_structure1
+        val read_structure2 
+
+    output:
+        tuple val(idPatient), val(idSample), val(idRun), file("${idSample}_umi_converted.bam")
+
+    when: params.umi
+
+    // tmp folder for fgbio might be solved more elengantly?
+
+    script:
+    """
+    mkdir tmp
+
+    fgbio --tmp-dir=${PWD}/tmp \
+    FastqToBam \
+    -i "${idSample}_${idRun}_R1.fastq.gz" "${idSample}_${idRun}_R2.fastq.gz" \
+    -o "${idSample}_umi_converted.bam" \
+    --read-structures ${read_structure1} ${read_structure2} \
+    --sample ${idSample} \
+    --library ${idSample}
+    """
+}
+
+// UMI - STEP 2 - MAP THE BAM FILE
+// this is necessary because the UMI groups are created based on
+// mapping position + same UMI tag
+process UMIMapBamFile {
+    input:
+        tuple val(idPatient), val(idSample), val(idRun), file(convertedBam)
+        file(bwaIndex)
+        file(fasta)
+        file(fastaFai)
+
+    output:
+        tuple val(idPatient), val(idSample), val(idRun), file("${idSample}_umi_unsorted.bam")
+
+    when: params.umi
+
+    script:
+    aligner = params.aligner == "bwa-mem2" ? "bwa-mem2" : "bwa"
+    """
+    samtools bam2fq -T RX ${convertedBam} | \
+    ${aligner} mem -p -t ${task.cpus} -C -M -R \"@RG\\tID:${idSample}\\tSM:${idSample}\\tPL:Illumina\" \
+    ${fasta} - | \
+    samtools view -bS - > ${idSample}_umi_unsorted.bam
+    """
+}
+
+// UMI - STEP 3 - GROUP READS BY UMIs
+// We have chose the Adjacency method, following the nice paper and blog explanation integrated in both
+// UMItools and FGBIO
+// https://cgatoxford.wordpress.com/2015/08/14/unique-molecular-identifiers-the-problem-the-solution-and-the-proof/
+// alternatively we can define this as input for the user to choose from
+
+process GroupReadsByUmi {
+    publishDir "${params.outdir}/Reports/${idSample}/UMI/${idSample}_${idRun}", mode: params.publish_dir_mode
+
+    input:
+        tuple val(idPatient), val(idSample), val(idRun), file(alignedBam)
+
+    output:
+        file("${idSample}_umi_histogram.txt")
+        tuple val(idPatient), val(idSample), val(idRun), file("${idSample}_umi-grouped.bam")
+
+    when: params.umi
+
+    script:
+    """
+    mkdir tmp
+
+    samtools view -h ${alignedBam} | \
+    samblaster -M --addMateTags | \
+    samtools view -Sb - >${idSample}_unsorted_tagged.bam
+
+    fgbio --tmp-dir=${PWD}/tmp \
+    GroupReadsByUmi \
+    -s Adjacency \
+    -i ${idSample}_unsorted_tagged.bam \
+    -o ${idSample}_umi-grouped.bam \
+    -f ${idSample}_umi_histogram.txt
+    """
+}
+
+// UMI - STEP 4 - CALL MOLECULAR CONSENSUS
+// Now that the reads are organised by UMI groups a molecular consensus will be created
+// the resulting bam file will be again unmapped and therefore can be fed into the
+// existing workflow from the step mapping
+process CallMolecularConsensusReads {
+    publishDir "${params.outdir}/Reports/${idSample}/UMI/${idSample}_${idRun}", mode: params.publish_dir_mode
+
+    input:
+        tuple val(idPatient), val(idSample), val(idRun), file(groupedBamFile)
+
+    output:
+        tuple val(idPatient), val(idSample), val(idRun), file("${idSample}_umi-consensus.bam"), val("null")
+
+    when: params.umi
+
+    script:
+    """
+    mkdir tmp
+
+    fgbio --tmp-dir=${PWD}/tmp \
+    CallMolecularConsensusReads \
+    -i $groupedBamFile \
+    -o ${idSample}_umi-consensus.bam \
+    -M 1 -S Coordinate
+    """
+}
+
+// ################# END OF UMI READS PRE-PROCESSING
+// from this moment on the generated uBam files can feed into the existing tools
+
 
 def initializeParamsScope(inputStep, inputToolsList) {
   // Initialize each params in params.genomes, catch the command line first if it was defined
