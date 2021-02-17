@@ -1,4 +1,892 @@
-include { nfcoreHeader } from "${params.modulesDir}/nfcore.nf"
+#!/usr/bin/env nextflow
+
+printHelpMessageAndExitIfUserAsks()
+
+step = 'variantcalling'
+tools = getInputTools()
+skipQC = getInputSkipQC()
+annotate_tools = getInputListOfAnnotationTools()
+custom_runName = getCustomRunName()
+save_bam_mapped = getSavedBamMapped()
+tsvPath = getInputTsvPath()
+
+initializeParamsObject(step, tools)
+
+summaryMap = getSummaryMapFromParamsObjectAndArgs(step, custom_runName, skipQC, tools)
+
+checkHostname()
+checkInputReferenceGenomeExists()
+checkInputStepIsValid(step)
+checkInputToolsExist(tools)
+checkInputSkippedQCToolsExist(skipQC)
+checkInputListOfAnnotationToolsValid(annotate_tools)
+checkInputAscatParametersValid()
+checkInputReadStructureParametersValid()
+checkAwsBatchSettings()
+checkInputTsvPath(tsvPath)
+
+printNfcoreSarekWelcomeGraphic()
+printSummaryMessage(summaryMap)
+printMutec2Warning(tools)
+
+ch_multiqc_config = getMultiqcConfigFile()
+ch_multiqc_custom_config = getMultiqcCustomConfigFileAsChannel()
+ch_output_docs = getOutputDocsFile()
+ch_output_docs_images = getOutputDocsImagesFile()
+
+inputSample = getInputSampleListAsChannel(tsvPath)
+
+(genderMap, statusMap, inputSample) = extractInfos(inputSample)
+
+
+// Initialize channels with files based on params
+ch_ac_loci = params.ac_loci && 'ascat' in tools ? Channel.value(file(params.ac_loci)) : "null"
+ch_ac_loci_gc = params.ac_loci_gc && 'ascat' in tools ? Channel.value(file(params.ac_loci_gc)) : "null"
+ch_chr_dir = params.chr_dir && 'controlfreec' in tools ? Channel.value(file(params.chr_dir)) : "null"
+ch_chr_length = params.chr_length && 'controlfreec' in tools ? Channel.value(file(params.chr_length)) : "null"
+ch_dbsnp = params.dbsnp && ('mapping' in step || 'preparerecalibration' in step || 'controlfreec' in tools || 'haplotypecaller' in tools || 'mutect2' in tools || params.sentieon) ? Channel.value(file(params.dbsnp)) : "null"
+ch_fasta = params.fasta && !('annotate' in step) ? Channel.value(file(params.fasta)) : "null"
+ch_fai = params.fasta_fai && !('annotate' in step) ? Channel.value(file(params.fasta_fai)) : "null"
+ch_germline_resource = params.germline_resource && 'mutect2' in tools ? Channel.value(file(params.germline_resource)) : "null"
+ch_intervals = params.intervals && !params.no_intervals && !('annotate' in step) ? Channel.value(file(params.intervals)) : "null"
+ch_known_indels = params.known_indels && ('mapping' in step || 'preparerecalibration' in step) ? Channel.value(file(params.known_indels)) : "null"
+ch_mappability = params.mappability && 'controlfreec' in tools ? Channel.value(file(params.mappability)) : "null"
+
+// Initialize channels with values based on params
+ch_snpeff_cache = params.snpeff_cache ? Channel.value(file(params.snpeff_cache)) : "null"
+ch_snpeff_db = params.snpeff_db ? Channel.value(params.snpeff_db) : "null"
+ch_vep_cache_version = params.vep_cache_version ? Channel.value(params.vep_cache_version) : "null"
+ch_vep_cache = params.vep_cache ? Channel.value(file(params.vep_cache)) : "null"
+
+// Optional files, not defined within the params.genomes[params.genome] scope
+ch_cadd_indels = params.cadd_indels ? Channel.value(file(params.cadd_indels)) : "null"
+ch_cadd_indels_tbi = params.cadd_indels_tbi ? Channel.value(file(params.cadd_indels_tbi)) : "null"
+ch_cadd_wg_snvs = params.cadd_wg_snvs ? Channel.value(file(params.cadd_wg_snvs)) : "null"
+ch_cadd_wg_snvs_tbi = params.cadd_wg_snvs_tbi ? Channel.value(file(params.cadd_wg_snvs_tbi)) : "null"
+ch_pon = params.pon ? Channel.value(file(params.pon)) : "null"
+ch_target_bed = params.target_bed ? Channel.value(file(params.target_bed)) : "null"
+
+// Optional values, not defined within the params.genomes[params.genome] scope
+ch_read_structure1 = params.read_structure1 ? Channel.value(params.read_structure1) : "null"
+ch_read_structure2 = params.read_structure2 ? Channel.value(params.read_structure2) : "null"
+
+
+// Parse software version numbers
+
+process get_software_versions {
+    publishDir "${params.outdir}/pipeline_info", mode: params.publish_dir_mode,
+        saveAs: {it.indexOf(".csv") > 0 ? it : null}
+
+    output:
+        file 'software_versions_mqc.yaml' into ch_software_versions_yaml
+        file "software_versions.csv"
+
+    when: !('versions' in skipQC)
+
+    script:
+    aligner = params.aligner == "bwa-mem2" ? "bwa-mem2" : "bwa"
+    """
+    alleleCounter --version &> v_allelecount.txt 2>&1 || true
+    bcftools --version &> v_bcftools.txt 2>&1 || true
+    ${aligner} version &> v_bwa.txt 2>&1 || true
+    cnvkit.py version &> v_cnvkit.txt 2>&1 || true
+    configManta.py --version &> v_manta.txt 2>&1 || true
+    configureStrelkaGermlineWorkflow.py --version &> v_strelka.txt 2>&1 || true
+    echo "${workflow.manifest.version}" &> v_pipeline.txt 2>&1 || true
+    echo "${workflow.nextflow.version}" &> v_nextflow.txt 2>&1 || true
+    snpEff -version &> v_snpeff.txt 2>&1 || true
+    fastqc --version &> v_fastqc.txt 2>&1 || true
+    freebayes --version &> v_freebayes.txt 2>&1 || true
+    freec &> v_controlfreec.txt 2>&1 || true
+    gatk ApplyBQSR --help &> v_gatk.txt 2>&1 || true
+    msisensor &> v_msisensor.txt 2>&1 || true
+    multiqc --version &> v_multiqc.txt 2>&1 || true
+    qualimap --version &> v_qualimap.txt 2>&1 || true
+    R --version &> v_r.txt 2>&1 || true
+    R -e "library(ASCAT); help(package='ASCAT')" &> v_ascat.txt 2>&1 || true
+    samtools --version &> v_samtools.txt 2>&1 || true
+    tiddit &> v_tiddit.txt 2>&1 || true
+    trim_galore -v &> v_trim_galore.txt 2>&1 || true
+    vcftools --version &> v_vcftools.txt 2>&1 || true
+    vep --help &> v_vep.txt 2>&1 || true
+
+    ${params.sarekDir}/bin/scrape_software_versions.py &> software_versions_mqc.yaml
+    """
+}
+
+ch_software_versions_yaml = ch_software_versions_yaml.dump(tag:'SOFTWARE VERSIONS')
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/*
+================================================================================
+                                BUILDING INDEXES
+================================================================================
+*/
+
+// And then initialize channels based on params or indexes that were just built
+
+process BuildBWAindexes {
+    tag "${fasta}"
+
+    publishDir params.outdir, mode: params.publish_dir_mode,
+        saveAs: {params.save_reference ? "reference_genome/BWAIndex/${it}" : null }
+
+    input:
+        file(fasta) from ch_fasta
+
+    output:
+        file("${fasta}.*") into bwa_built
+
+    when: !(params.bwa) && params.fasta && 'mapping' in step
+
+    script:
+    aligner = params.aligner == "bwa-mem2" ? "bwa-mem2" : "bwa"
+    """
+    ${aligner} index ${fasta}
+    """
+}
+
+ch_bwa = params.bwa ? Channel.value(file(params.bwa)) : bwa_built
+
+process BuildDict {
+    tag "${fasta}"
+
+    publishDir params.outdir, mode: params.publish_dir_mode,
+        saveAs: {params.save_reference ? "reference_genome/${it}" : null }
+
+    input:
+        file(fasta) from ch_fasta
+
+    output:
+        file("${fasta.baseName}.dict") into dictBuilt
+
+    when: !(params.dict) && params.fasta && !('annotate' in step) && !('controlfreec' in step)
+
+    script:
+    """
+    gatk --java-options "-Xmx${task.memory.toGiga()}g" \
+        CreateSequenceDictionary \
+        --REFERENCE ${fasta} \
+        --OUTPUT ${fasta.baseName}.dict
+    """
+}
+
+ch_dict = params.dict ? Channel.value(file(params.dict)) : dictBuilt
+
+process BuildFastaFai {
+    tag "${fasta}"
+
+    publishDir params.outdir, mode: params.publish_dir_mode,
+        saveAs: {params.save_reference ? "reference_genome/${it}" : null }
+
+    input:
+        file(fasta) from ch_fasta
+
+    output:
+        file("${fasta}.fai") into fai_built
+
+    when: !(params.fasta_fai) && params.fasta && !('annotate' in step)
+
+    script:
+    """
+    samtools faidx ${fasta}
+    """
+}
+
+ch_fai = params.fasta_fai ? Channel.value(file(params.fasta_fai)) : fai_built
+
+process BuildDbsnpIndex {
+    tag "${dbsnp}"
+
+    publishDir params.outdir, mode: params.publish_dir_mode,
+        saveAs: {params.save_reference ? "reference_genome/${it}" : null }
+
+    input:
+        file(dbsnp) from ch_dbsnp
+
+    output:
+        file("${dbsnp}.tbi") into dbsnp_tbi
+
+    when: !(params.dbsnp_index) && params.dbsnp && ('mapping' in step || 'preparerecalibration' in step || 'controlfreec' in tools || 'haplotypecaller' in tools || 'mutect2' in tools || 'tnscope' in tools)
+
+    script:
+    """
+    tabix -p vcf ${dbsnp}
+    """
+}
+
+ch_dbsnp_tbi = params.dbsnp ? params.dbsnp_index ? Channel.value(file(params.dbsnp_index)) : dbsnp_tbi : "null"
+
+process BuildGermlineResourceIndex {
+    tag "${germlineResource}"
+
+    publishDir params.outdir, mode: params.publish_dir_mode,
+        saveAs: {params.save_reference ? "reference_genome/${it}" : null }
+
+    input:
+        file(germlineResource) from ch_germline_resource
+
+    output:
+        file("${germlineResource}.tbi") into germline_resource_tbi
+
+    when: !(params.germline_resource_index) && params.germline_resource && 'mutect2' in tools
+
+    script:
+    """
+    tabix -p vcf ${germlineResource}
+    """
+}
+
+ch_germline_resource_tbi = params.germline_resource ? params.germline_resource_index ? Channel.value(file(params.germline_resource_index)) : germline_resource_tbi : "null"
+
+process BuildKnownIndelsIndex {
+    tag "${knownIndels}"
+
+    publishDir params.outdir, mode: params.publish_dir_mode,
+        saveAs: {params.save_reference ? "reference_genome/${it}" : null }
+
+    input:
+        each file(knownIndels) from ch_known_indels
+
+    output:
+        file("${knownIndels}.tbi") into known_indels_tbi
+
+    when: !(params.known_indels_index) && params.known_indels && ('mapping' in step || 'preparerecalibration' in step)
+
+    script:
+    """
+    tabix -p vcf ${knownIndels}
+    """
+}
+
+ch_known_indels_tbi = params.known_indels ? params.known_indels_index ? Channel.value(file(params.known_indels_index)) : known_indels_tbi.collect() : "null"
+
+process BuildPonIndex {
+    tag "${pon}"
+
+    publishDir params.outdir, mode: params.publish_dir_mode,
+        saveAs: {params.save_reference ? "reference_genome/${it}" : null }
+
+    input:
+        file(pon) from ch_pon
+
+    output:
+        file("${pon}.tbi") into pon_tbi
+
+    when: !(params.pon_index) && params.pon && ('tnscope' in tools || 'mutect2' in tools)
+
+    script:
+    """
+    tabix -p vcf ${pon}
+    """
+}
+
+ch_pon_tbi = params.pon ? params.pon_index ? Channel.value(file(params.pon_index)) : pon_tbi : "null"
+
+process BuildIntervals {
+    tag "${fastaFai}"
+
+    publishDir params.outdir, mode: params.publish_dir_mode,
+    saveAs: {params.save_reference ? "reference_genome/${it}" : null }
+
+    input:
+        file(fastaFai) from ch_fai
+
+    output:
+        file("${fastaFai.baseName}.bed") into intervalBuilt
+
+    when: !(params.intervals) && !('annotate' in step) && !('controlfreec' in step) 
+
+    script:
+    """
+    awk -v FS='\t' -v OFS='\t' '{ print \$1, \"0\", \$2 }' ${fastaFai} > ${fastaFai.baseName}.bed
+    """
+}
+
+ch_intervals = params.no_intervals ? "null" : params.intervals && !('annotate' in step) ? Channel.value(file(params.intervals)) : intervalBuilt
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/*
+================================================================================
+                                  PREPROCESSING
+================================================================================
+*/
+
+// STEP 0: CREATING INTERVALS FOR PARALLELIZATION (PREPROCESSING AND VARIANT CALLING)
+
+process CreateIntervalBeds {
+    tag "${intervals}"
+
+    input:
+        file(intervals) from ch_intervals
+
+    output:
+        file '*.bed' into bedIntervals mode flatten
+
+    when: (!params.no_intervals) && step != 'annotate'
+
+    script:
+    // If the interval file is BED format, the fifth column is interpreted to
+    // contain runtime estimates, which is then used to combine short-running jobs
+    if (hasExtension(intervals, "bed"))
+        """
+        awk -vFS="\t" '{
+          t = \$5  # runtime estimate
+          if (t == "") {
+            # no runtime estimate in this row, assume default value
+            t = (\$3 - \$2) / ${params.nucleotides_per_second}
+          }
+          if (name == "" || (chunk > 600 && (chunk + t) > longest * 1.05)) {
+            # start a new chunk
+            name = sprintf("%s_%d-%d.bed", \$1, \$2+1, \$3)
+            chunk = 0
+            longest = 0
+          }
+          if (t > longest)
+            longest = t
+          chunk += t
+          print \$0 > name
+        }' ${intervals}
+        """
+    else if (hasExtension(intervals, "interval_list"))
+        """
+        grep -v '^@' ${intervals} | awk -vFS="\t" '{
+          name = sprintf("%s_%d-%d", \$1, \$2, \$3);
+          printf("%s\\t%d\\t%d\\n", \$1, \$2-1, \$3) > name ".bed"
+        }'
+        """
+    else
+        """
+        awk -vFS="[:-]" '{
+          name = sprintf("%s_%d-%d", \$1, \$2, \$3);
+          printf("%s\\t%d\\t%d\\n", \$1, \$2-1, \$3) > name ".bed"
+        }' ${intervals}
+        """
+}
+
+bedIntervals = bedIntervals
+    .map { intervalFile ->
+        def duration = 0.0
+        for (line in intervalFile.readLines()) {
+            final fields = line.split('\t')
+            if (fields.size() >= 5) duration += fields[4].toFloat()
+            else {
+                start = fields[1].toInteger()
+                end = fields[2].toInteger()
+                duration += (end - start) / params.nucleotides_per_second
+            }
+        }
+        [duration, intervalFile]
+        }.toSortedList({ a, b -> b[0] <=> a[0] })
+    .flatten().collate(2)
+    .map{duration, intervalFile -> intervalFile}
+
+bedIntervals = bedIntervals.dump(tag:'bedintervals')
+
+if (params.no_intervals && step != 'annotate') {
+    file("${params.outdir}/no_intervals.bed").text = "no_intervals\n"
+    bedIntervals = Channel.from(file("${params.outdir}/no_intervals.bed"))
+}
+
+(intBaseRecalibrator, intApplyBQSR, intHaplotypeCaller, intFreebayesSingle, intMpileup, bedIntervals) = bedIntervals.into(6)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/*
+================================================================================
+                            GERMLINE VARIANT CALLING
+================================================================================
+*/
+
+
+
+
+// When starting with variant calling, Channel bam_recalibrated is inputSample
+if (step == 'variantcalling') bam_recalibrated = inputSample
+
+bam_recalibrated = bam_recalibrated.dump(tag:'BAM for Variant Calling')
+
+// Here we have a recalibrated bam set
+// The TSV file is formatted like: "idPatient status idSample bamFile baiFile"
+// Manta will be run in Germline mode, or in Tumor mode depending on status
+// HaplotypeCaller, TIDDIT and Strelka will be run for Normal and Tumor samples
+
+(bamMantaSingle, bamStrelkaSingle, bamTIDDIT, bamFreebayesSingleNoIntervals, bamHaplotypeCallerNoIntervals, bamRecalAll) = bam_recalibrated.into(6)
+
+
+// To speed Variant Callers up we are chopping the reference into smaller pieces
+// Do variant calling by this intervals, and re-merge the VCFs
+
+bamHaplotypeCaller = bamHaplotypeCallerNoIntervals.combine(intHaplotypeCaller)
+bamFreebayesSingle = bamFreebayesSingleNoIntervals.combine(intFreebayesSingle)
+
+
+// STEP GATK HAPLOTYPECALLER.1
+
+process HaplotypeCaller {
+    label 'memory_singleCPU_task_sq'
+    label 'cpus_2'
+
+    tag "${idSample}-${intervalBed.baseName}"
+
+    input:
+        set idPatient, idSample, file(bam), file(bai), file(intervalBed) from bamHaplotypeCaller
+        //file(dbsnp) from ch_dbsnp
+        //file(dbsnpIndex) from ch_dbsnp_tbi
+        file(dict) from ch_dict
+        file(fasta) from ch_fasta
+        file(fastaFai) from ch_fai
+
+    output:
+        set val("HaplotypeCallerGVCF"), idPatient, idSample, file("${intervalBed.baseName}_${idSample}.g.vcf") into gvcfHaplotypeCaller
+        set idPatient, idSample, file(intervalBed), file("${intervalBed.baseName}_${idSample}.g.vcf") into gvcfGenotypeGVCFs
+
+    //when: 'haplotypecaller' in tools
+
+    script:
+    //javaOptions = "-Xmx${task.memory.toGiga()}g -Xms6000m -XX:GCTimeLimit=50 -XX:GCHeapFreeLimit=10"
+    javaOptions = ""
+    intervalsOptions = params.no_intervals ? "" : "-L ${intervalBed}"
+    dbsnpOptions = "" //params.dbsnp ? "--D ${dbsnp}" : ""
+    """
+    gatk --java-options "${javaOptions}" \
+        HaplotypeCaller \
+        -R ${fasta} \
+        -I ${bam} \
+        ${intervalsOptions} \
+        ${dbsnpOptions} \
+        -O ${intervalBed.baseName}_${idSample}.g.vcf \
+        -ERC GVCF
+    """
+}
+
+gvcfHaplotypeCaller = gvcfHaplotypeCaller.groupTuple(by:[0, 1, 2])
+
+if (!params.generate_gvcf) gvcfHaplotypeCaller.close()
+else gvcfHaplotypeCaller = gvcfHaplotypeCaller.dump(tag:'GVCF HaplotypeCaller')
+
+// STEP GATK HAPLOTYPECALLER.2
+
+process GenotypeGVCFs {
+    tag "${idSample}-${intervalBed.baseName}"
+
+    input:
+        set idPatient, idSample, file(intervalBed), file(gvcf) from gvcfGenotypeGVCFs
+        //file(dbsnp) from ch_dbsnp
+        //file(dbsnpIndex) from ch_dbsnp_tbi
+        file(dict) from ch_dict
+        file(fasta) from ch_fasta
+        file(fastaFai) from ch_fai
+
+    output:
+    set val("HaplotypeCaller"), idPatient, idSample, file("${intervalBed.baseName}_${idSample}.vcf") into vcfGenotypeGVCFs
+
+    //when: 'haplotypecaller' in tools
+
+    script:
+    // Using -L is important for speed and we have to index the interval files also
+    intervalsOptions = params.no_intervals ? "" : "-L ${intervalBed}"
+    dbsnpOptions = params.dbsnp ? "--D ${dbsnp}" : ""
+    """
+    gatk --java-options -Xmx${task.memory.toGiga()}g \
+        IndexFeatureFile \
+        -I ${gvcf}
+
+    gatk --java-options -Xmx${task.memory.toGiga()}g \
+        GenotypeGVCFs \
+        -R ${fasta} \
+        ${intervalsOptions} \
+        ${dbsnpOptions} \
+        -V ${gvcf} \
+        -O ${intervalBed.baseName}_${idSample}.vcf
+    """
+}
+
+vcfGenotypeGVCFs = vcfGenotypeGVCFs.groupTuple(by:[0, 1, 2])
+
+
+
+// STEP STRELKA.1 - SINGLE MODE
+
+process StrelkaSingle {
+    label 'cpus_max'
+    label 'memory_max'
+
+    tag "${idSample}"
+
+    publishDir "${params.outdir}/VariantCalling/${idSample}/Strelka", mode: params.publish_dir_mode
+
+    input:
+        set idPatient, idSample, file(bam), file(bai) from bamStrelkaSingle
+        file(fasta) from ch_fasta
+        file(fastaFai) from ch_fai
+        file(targetBED) from ch_target_bed
+
+    output:
+        set val("Strelka"), idPatient, idSample, file("*.vcf.gz"), file("*.vcf.gz.tbi") into vcfStrelkaSingle
+
+    //when: 'strelka' in tools
+
+    script:
+    beforeScript = params.target_bed ? "bgzip --threads ${task.cpus} -c ${targetBED} > call_targets.bed.gz ; tabix call_targets.bed.gz" : ""
+    options = params.target_bed ? "--exome --callRegions call_targets.bed.gz" : ""
+    """
+    ${beforeScript}
+    configureStrelkaGermlineWorkflow.py \
+        --bam ${bam} \
+        --referenceFasta ${fasta} \
+        ${options} \
+        --runDir Strelka
+
+    python Strelka/runWorkflow.py -m local -j ${task.cpus}
+
+    mv Strelka/results/variants/genome.*.vcf.gz \
+        Strelka_${idSample}_genome.vcf.gz
+    mv Strelka/results/variants/genome.*.vcf.gz.tbi \
+        Strelka_${idSample}_genome.vcf.gz.tbi
+    mv Strelka/results/variants/variants.vcf.gz \
+        Strelka_${idSample}_variants.vcf.gz
+    mv Strelka/results/variants/variants.vcf.gz.tbi \
+        Strelka_${idSample}_variants.vcf.gz.tbi
+    """
+}
+
+vcfStrelkaSingle = vcfStrelkaSingle.dump(tag:'Strelka - Single Mode')
+
+// STEP MANTA.1 - SINGLE MODE
+
+process MantaSingle {
+    label 'cpus_max'
+    label 'memory_max'
+
+    tag "${idSample}"
+
+    publishDir "${params.outdir}/VariantCalling/${idSample}/Manta", mode: params.publish_dir_mode
+
+    input:
+        set idPatient, idSample, file(bam), file(bai) from bamMantaSingle
+        file(fasta) from ch_fasta
+        file(fastaFai) from ch_fai
+        file(targetBED) from ch_target_bed
+
+    output:
+        set val("Manta"), idPatient, idSample, file("*.vcf.gz"), file("*.vcf.gz.tbi") into vcfMantaSingle
+
+    //when: 'manta' in tools
+
+    script:
+    beforeScript = params.target_bed ? "bgzip --threads ${task.cpus} -c ${targetBED} > call_targets.bed.gz ; tabix call_targets.bed.gz" : ""
+    options = params.target_bed ? "--exome --callRegions call_targets.bed.gz" : ""
+    status = statusMap[idPatient, idSample]
+    inputbam = status == 0 ? "--bam" : "--tumorBam"
+    vcftype = status == 0 ? "diploid" : "tumor"
+    """
+    ${beforeScript}
+    configManta.py \
+        ${inputbam} ${bam} \
+        --reference ${fasta} \
+        ${options} \
+        --runDir Manta
+
+    python Manta/runWorkflow.py -m local -j ${task.cpus}
+
+    mv Manta/results/variants/candidateSmallIndels.vcf.gz \
+        Manta_${idSample}.candidateSmallIndels.vcf.gz
+    mv Manta/results/variants/candidateSmallIndels.vcf.gz.tbi \
+        Manta_${idSample}.candidateSmallIndels.vcf.gz.tbi
+    mv Manta/results/variants/candidateSV.vcf.gz \
+        Manta_${idSample}.candidateSV.vcf.gz
+    mv Manta/results/variants/candidateSV.vcf.gz.tbi \
+        Manta_${idSample}.candidateSV.vcf.gz.tbi
+    mv Manta/results/variants/${vcftype}SV.vcf.gz \
+        Manta_${idSample}.${vcftype}SV.vcf.gz
+    mv Manta/results/variants/${vcftype}SV.vcf.gz.tbi \
+        Manta_${idSample}.${vcftype}SV.vcf.gz.tbi
+    """
+}
+
+vcfMantaSingle = vcfMantaSingle.dump(tag:'Single Manta')
+
+// STEP TIDDIT
+
+process TIDDIT {
+    tag "${idSample}"
+
+    publishDir params.outdir, mode: params.publish_dir_mode,
+        saveAs: {
+            if (it == "TIDDIT_${idSample}.vcf") "VariantCalling/${idSample}/TIDDIT/${it}"
+            else "Reports/${idSample}/TIDDIT/${it}"
+        }
+
+    input:
+        set idPatient, idSample, file(bam), file(bai) from bamTIDDIT
+        file(fasta) from ch_fasta
+        file(fastaFai) from ch_fai
+
+    output:
+        set val("TIDDIT"), idPatient, idSample, file("*.vcf.gz"), file("*.tbi") into vcfTIDDIT
+        set file("TIDDIT_${idSample}.old.vcf"), file("TIDDIT_${idSample}.ploidy.tab"), file("TIDDIT_${idSample}.signals.tab"), file("TIDDIT_${idSample}.wig"), file("TIDDIT_${idSample}.gc.wig") into tidditOut
+
+    //when: 'tiddit' in tools
+
+    script:
+    """
+    tiddit --sv -o TIDDIT_${idSample} --bam ${bam} --ref ${fasta}
+
+    mv TIDDIT_${idSample}.vcf TIDDIT_${idSample}.old.vcf
+
+    grep -E "#|PASS" TIDDIT_${idSample}.old.vcf > TIDDIT_${idSample}.vcf
+
+    bgzip --threads ${task.cpus} -c TIDDIT_${idSample}.vcf > TIDDIT_${idSample}.vcf.gz
+
+    tabix TIDDIT_${idSample}.vcf.gz
+    """
+}
+
+vcfTIDDIT = vcfTIDDIT.dump(tag:'TIDDIT')
+
+// STEP FREEBAYES SINGLE MODE
+
+process FreebayesSingle {
+    tag "${idSample}-${intervalBed.baseName}"
+
+    label 'cpus_1'
+    
+    input:
+        set idPatient, idSample, file(bam), file(bai), file(intervalBed) from bamFreebayesSingle
+        file(fasta) from ch_fasta
+        file(fastaFai) from ch_software_versions_yaml
+    
+    output:
+        set val("FreeBayes"), idPatient, idSample, file("${intervalBed.baseName}_${idSample}.vcf") into vcfFreebayesSingle
+    
+    //when: 'freebayes' in tools
+
+    script:
+    intervalsOptions = params.no_intervals ? "" : "-t ${intervalBed}"
+    """
+    freebayes \
+        -f ${fasta} \
+        --min-alternate-fraction 0.1 \
+        --min-mapping-quality 1 \
+        ${intervalsOptions} \
+        ${bam} > ${intervalBed.baseName}_${idSample}.vcf
+    """
+}
+
+vcfFreebayesSingle = vcfFreebayesSingle.groupTuple(by: [0,1,2])
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+vcfConcatenateVCFs = Channel.empty().mix(vcfFreebayesSingle, vcfGenotypeGVCFs, gvcfHaplotypeCaller)
+
+//vcfConcatenateVCFs = Channel.empty().mix(vcfGenotypeGVCFs, gvcfHaplotypeCaller)
+
+vcfConcatenateVCFs = vcfConcatenateVCFs.dump(tag:'VCF to merge')
+
+process ConcatVCF {
+    label 'concat_vcf'
+    label 'cpus_8'
+
+    tag "${variantCaller}-${idSample}"
+
+    publishDir "${params.outdir}/VariantCalling/${idSample}/${"$variantCaller"}", mode: params.publish_dir_mode
+
+    input:
+        set variantCaller, idPatient, idSample, file(vcf) from vcfConcatenateVCFs
+        file(fastaFai) from ch_fai
+        file(targetBED) from ch_target_bed
+
+    output:
+    // we have this funny *_* pattern to avoid copying the raw calls to publishdir
+        set variantCaller, idPatient, idSample, file("*_*.vcf.gz"), file("*_*.vcf.gz.tbi") into vcfConcatenated
+
+    //when: ('haplotypecaller' in tools || 'mutect2' in tools || 'freebayes' in tools)
+
+    script:
+    if (variantCaller == 'HaplotypeCallerGVCF')
+        outputFile = "HaplotypeCaller_${idSample}.g.vcf"
+    else
+        outputFile = "${variantCaller}_${idSample}.vcf"
+    options = params.target_bed ? "-t ${targetBED}" : ""
+    intervalsOptions = params.no_intervals ? "-n" : ""
+    """
+    ${params.sarekDir}/bin/concatenateVCFs.sh -i ${fastaFai} -c ${task.cpus} -o ${outputFile} ${options} ${intervalsOptions}
+    """
+}
+
+vcfConcatenated = vcfConcatenated.dump(tag:'VCF')
+
+
+
+
+
+
+
+
+
+
+
+
+/*
+================================================================================
+                                nf-core functions
+================================================================================
+*/
+
+def create_workflow_summary(summary) {
+    def yaml_file = workDir.resolve('workflow_summary_mqc.yaml')
+    yaml_file.text  = """
+    id: 'nf-core-sarek-summary'
+    description: " - this information is collected when the pipeline is started."
+    section_name: 'nf-core/sarek Workflow Summary'
+    section_href: 'https://github.com/nf-core/sarek'
+    plot_type: 'html'
+    data: |
+        <dl class=\"dl-horizontal\">
+${summary.collect { k, v -> "            <dt>$k</dt><dd><samp>${v ?: '<span style=\"color:#999999;\">N/A</a>'}</samp></dd>" }.join("\n")}
+        </dl>
+    """.stripIndent()
+
+   return yaml_file
+}
+
+def nfcoreHeader() {
+    // Log colors ANSI codes
+    c_black  = params.monochrome_logs ? '' : "\033[0;30m";
+    c_blue   = params.monochrome_logs ? '' : "\033[0;34m";
+    c_dim    = params.monochrome_logs ? '' : "\033[2m";
+    c_green  = params.monochrome_logs ? '' : "\033[0;32m";
+    c_purple = params.monochrome_logs ? '' : "\033[0;35m";
+    c_reset  = params.monochrome_logs ? '' : "\033[0m";
+    c_white  = params.monochrome_logs ? '' : "\033[0;37m";
+    c_yellow = params.monochrome_logs ? '' : "\033[0;33m";
+
+    return """    -${c_dim}--------------------------------------------------${c_reset}-
+                                            ${c_green},--.${c_black}/${c_green},-.${c_reset}
+    ${c_blue}        ___     __   __   __   ___     ${c_green}/,-._.--~\'${c_reset}
+    ${c_blue}  |\\ | |__  __ /  ` /  \\ |__) |__         ${c_yellow}}  {${c_reset}
+    ${c_blue}  | \\| |       \\__, \\__/ |  \\ |___     ${c_green}\\`-._,-`-,${c_reset}
+                                            ${c_green}`._,._,\'${c_reset}
+        ${c_white}____${c_reset}
+      ${c_white}.´ _  `.${c_reset}
+     ${c_white}/  ${c_green}|\\${c_reset}`-_ \\${c_reset}     ${c_blue} __        __   ___     ${c_reset}
+    ${c_white}|   ${c_green}| \\${c_reset}  `-|${c_reset}    ${c_blue}|__`  /\\  |__) |__  |__/${c_reset}
+     ${c_white}\\ ${c_green}|   \\${c_reset}  /${c_reset}     ${c_blue}.__| /¯¯\\ |  \\ |___ |  \\${c_reset}
+      ${c_white}`${c_green}|${c_reset}____${c_green}\\${c_reset}´${c_reset}
+
+    ${c_purple}  nf-core/sarek v${workflow.manifest.version}${c_reset}
+    -${c_dim}--------------------------------------------------${c_reset}-
+    """.stripIndent()
+}
+
+def checkHostname() {
+    def c_reset       = params.monochrome_logs ? '' : "\033[0m"
+    def c_white       = params.monochrome_logs ? '' : "\033[0;37m"
+    def c_red         = params.monochrome_logs ? '' : "\033[1;91m"
+    def c_yellow_bold = params.monochrome_logs ? '' : "\033[1;93m"
+    if (params.hostnames) {
+        def hostname = "hostname".execute().text.trim()
+        params.hostnames.each { prof, hnames ->
+            hnames.each { hname ->
+                if (hostname.contains(hname) && !workflow.profile.contains(prof)) {
+                    log.error "====================================================\n" +
+                            "  ${c_red}WARNING!${c_reset} You are running with `-profile $workflow.profile`\n" +
+                            "  but your machine hostname is ${c_white}'$hostname'${c_reset}\n" +
+                            "  ${c_yellow_bold}It's highly recommended that you use `-profile $prof${c_reset}`\n" +
+                            "============================================================"
+                }
+            }
+        }
+    }
+}
 
 /*
 ================================================================================
@@ -281,8 +1169,8 @@ def returnStatus(it) {
 def getInputStep() {
     return params.step ? params.step.toLowerCase().replaceAll('-', '').replaceAll('_', '') : ''
 }
-def getInputTools(inputStep) {
-    if (inputStep == 'controlfreec') {
+def getInputTools() {
+    if (step == 'controlfreec') {
         return ['controlfreec']
     } else {
       return params.tools ? params.tools.split(',').collect{it.trim().toLowerCase().replaceAll('-', '').replaceAll('_', '')} : []
@@ -338,12 +1226,11 @@ def getTsvPathFromOutputOfPreviousStep() {
           case 'mapping': break
           case 'preparerecalibration': return "${params.outdir}/Preprocessing/TSV/duplicates_marked_no_table.tsv"; break
           case 'recalibrate': return "${params.outdir}/Preprocessing/TSV/duplicates_marked.tsv"; break
-          case 'variantcalling': 
-            if (!params.genomes[params.genome].dbsnp && !params.genomes[params.genome].known_indels) {
-              return "${params.outdir}/Preprocessing/TSV/duplicates_marked_no_table.tsv"
-            }
-            else {
-              return "${params.outdir}/Preprocessing/TSV/recalibrated.tsv"
+          case 'variantcalling':
+            if ( params.skip_recalibration == false ) {
+                return "${params.outdir}/Preprocessing/TSV/recalibrated.tsv"
+            } else {
+                return "${params.outdir}/Preprocessing/TSV/duplicates_marked_no_table.tsv"
             }
             break
           case 'controlfreec': return "${params.outdir}/VariantCalling/TSV/control-freec_mpileup.tsv"; break
@@ -362,9 +1249,9 @@ def getTsvPathFromOutputOfPreviousStep() {
       }
   } 
 }
-def getInputSampleListAsChannel(inputTsvPath, inputStep) {
+def getInputSampleListAsChannel(inputTsvPath) {
   tsvFile = file(inputTsvPath)
-  switch (inputStep) {
+  switch (step) {
       case 'mapping': return extractFastq(tsvFile)
       case 'preparerecalibration': return extractBam(tsvFile)
       case 'recalibrate': return extractRecal(tsvFile)
@@ -397,7 +1284,7 @@ def checkInputSkippedQCToolsExist(inputSkipQC) {
 }
 def checkInputListOfAnnotationToolsValid(inputAnnotationTools) {
   annoList = defineAnnoList()
-  if (!checkParameterList(inputAnnotationTools,annoList)) exit 1, 'Unknown tool(s) to annotate, see --help for more information'
+  if (!checkParameterList(annotate_tools,annoList)) exit 1, 'Unknown tool(s) to annotate, see --help for more information'
 }
 def checkInputAscatParametersValid() {
   if ((params.ascat_ploidy && !params.ascat_purity) || (!params.ascat_ploidy && params.ascat_purity)) exit 1, 'Please specify both --ascat_purity and --ascat_ploidy, or none of them'
@@ -425,8 +1312,6 @@ def isInputTsvFileSpecified() {
   if (params.input) return true
   else return false
 }
-
-
 
 def printHelpMessageAndExitIfUserAsks() {
   if (params.help == true) exit 0, helpMessage()
@@ -592,62 +1477,13 @@ def helpMessage() {
     """.stripIndent()
 }
 
-def initializeParamsScope(inputStep, inputToolsList) {
-  // Initialize each params in params.genomes, catch the command line first if it was defined
-  // params.fasta has to be the first one
-  params.fasta = params.genome && !('annotate' in inputStep) ? params.genomes[params.genome].fasta ?: null : null
-  // The rest can be sorted
-  params.ac_loci = params.genome && 'ascat' in inputToolsList ? params.genomes[params.genome].ac_loci ?: null : null
-  params.ac_loci_gc = params.genome && 'ascat' in inputToolsList ? params.genomes[params.genome].ac_loci_gc ?: null : null
-  params.bwa = params.genome && params.fasta && 'mapping' in inputStep ? params.genomes[params.genome].bwa ?: null : null
-  params.chr_dir = params.genome && 'controlfreec' in inputToolsList ? params.genomes[params.genome].chr_dir ?: null : null
-  params.chr_length = params.genome && 'controlfreec' in inputToolsList ? params.genomes[params.genome].chr_length ?: null : null
-  params.dbsnp = params.genome && ('mapping' in inputStep || 'preparerecalibration' in inputStep || 'controlfreec' in inputToolsList || 'haplotypecaller' in inputToolsList || 'mutect2' in inputToolsList || params.sentieon) ? params.genomes[params.genome].dbsnp ?: null : null
-  params.dbsnp_index = params.genome && params.dbsnp ? params.genomes[params.genome].dbsnp_index ?: null : null
-  params.dict = params.genome && params.fasta ? params.genomes[params.genome].dict ?: null : null
-  params.fasta_fai = params.genome && params.fasta ? params.genomes[params.genome].fasta_fai ?: null : null
-  params.germline_resource = params.genome && 'mutect2' in inputToolsList ? params.genomes[params.genome].germline_resource ?: null : null
-  params.germline_resource_index = params.genome && params.germline_resource ? params.genomes[params.genome].germline_resource_index ?: null : null
-  params.intervals = params.genome && !('annotate' in inputStep) ? params.genomes[params.genome].intervals ?: null : null
-  params.known_indels = params.genome && ('mapping' in inputStep || 'preparerecalibration' in inputStep) ? params.genomes[params.genome].known_indels ?: null : null
-  params.known_indels_index = params.genome && params.known_indels ? params.genomes[params.genome].known_indels_index ?: null : null
-  params.mappability = params.genome && 'controlfreec' in inputToolsList ? params.genomes[params.genome].mappability ?: null : null
-  params.snpeff_db = params.genome && ('snpeff' in inputToolsList || 'merge' in inputToolsList) ? params.genomes[params.genome].snpeff_db ?: null : null
-  params.species = params.genome && ('vep' in inputToolsList || 'merge' in inputToolsList) ? params.genomes[params.genome].species ?: null : null
-  params.vep_cache_version = params.genome && ('vep' in inputToolsList || 'merge' in inputToolsList) ? params.genomes[params.genome].vep_cache_version ?: null : null
+def printNfcoreSarekWelcomeGraphic() {
+  log.info nfcoreHeader()
 }
 
-def initializeDerivedParams(inputStep, inputToolsList) {
-
-    def derivedParams = [:]
-
-    // 'fasta' has to be the first one
-    derivedParams['fasta'] = params.genome && !('annotate' in inputStep) ? params.genomes[params.genome].fasta ?: null : null
-    derivedParams['ac_loci'] = params.genome && 'ascat' in inputToolsList ? params.genomes[params.genome].ac_loci ?: null : null
-    derivedParams['ac_loci_gc'] = params.genome && 'ascat' in inputToolsList ? params.genomes[params.genome].ac_loci_gc ?: null : null
-    derivedParams['bwa'] = params.genome && derivedParams['fasta'] && 'mapping' in inputStep ? params.genomes[params.genome].bwa ?: null : null
-    derivedParams['chr_dir'] = params.genome && 'controlfreec' in inputToolsList ? params.genomes[params.genome].chr_dir ?: null : null
-    derivedParams['chr_length'] = params.genome && 'controlfreec' in inputToolsList ? params.genomes[params.genome].chr_length ?: null : null
-    derivedParams['dbsnp'] = params.genome && ('mapping' in inputStep || 'preparerecalibration' in inputStep || 'controlfreec' in inputToolsList || 'haplotypecaller' in inputToolsList || 'mutect2' in inputToolsList) ? params.genomes[params.genome].dbsnp ?: null : null
-    derivedParams['dbsnp_index'] = params.genome && derivedParams['dbsnp'] ? params.genomes[params.genome].dbsnp_index ?: null : null
-    derivedParams['dict'] = params.genome && derivedParams['fasta'] ? params.genomes[params.genome].dict ?: null : null
-    derivedParams['fasta_fai'] = params.genome && derivedParams['fasta'] ? params.genomes[params.genome].fasta_fai ?: null : null
-    derivedParams['germline_resource'] = params.genome && 'mutect2' in inputToolsList ? params.genomes[params.genome].germline_resource ?: null : null
-    derivedParams['germline_resource_index'] = params.genome && derivedParams['germline_resource'] ? params.genomes[params.genome].germline_resource_index ?: null : null
-    derivedParams['intervals'] = params.genome && !('annotate' in inputStep) ? params.genomes[params.genome].intervals ?: null : null
-    derivedParams['known_indels'] = params.genome && ('mapping' in inputStep || 'preparerecalibration' in inputStep) ? params.genomes[params.genome].known_indels ?: null : null
-    derivedParams['known_indels_index'] = params.genome && derivedParams['known_indels'] ? params.genomes[params.genome].known_indels_index ?: null : null
-    derivedParams['mappability'] = params.genome && 'controlfreec' in inputToolsList ? params.genomes[params.genome].mappability ?: null : null
-    derivedParams['snpeff_db'] = params.genome && ('snpeff' in inputToolsList || 'merge' in inputToolsList) ? params.genomes[params.genome].snpeff_db ?: null : null
-    derivedParams['species'] = params.genome && ('vep' in inputToolsList || 'merge' in inputToolsList) ? params.genomes[params.genome].species ?: null : null
-    derivedParams['vep_cache_version'] = params.genome && ('vep' in inputToolsList || 'merge' in inputToolsList) ? params.genomes[params.genome].vep_cache_version ?: null : null
-
-    return derivedParams
-}
-
-def getSummaryMapFromParamsScopeAndArgs(derivedParams, step, custom_runName, skipQC, tools) {
-  // requires params and workflow maps to be initialized
-
+def getSummaryMapFromParamsObjectAndArgs(step, custom_runName, skipQC, tools) {
+  // also requires params and workflow maps to be initialized
+  
   def summary = [:]
 
   if (workflow.revision) summary['Pipeline Release'] = workflow.revision
@@ -794,4 +1630,30 @@ def printSummaryMessage(summaryMap) {
 
 def printMutec2Warning(inputToolsList) {
   if ('mutect2' in inputToolsList && !(params.pon)) log.warn "[nf-core/sarek] Mutect2 was requested, but as no panel of normals were given, results will not be optimal"
+
+}
+
+def initializeParamsObject(inputStep, inputToolsList) {
+  // Initialize each params in params.genomes, catch the command line first if it was defined
+  // params.fasta has to be the first one
+  params.fasta = params.genome && !('annotate' in inputStep) ? params.genomes[params.genome].fasta ?: null : null
+  // The rest can be sorted
+  params.ac_loci = params.genome && 'ascat' in inputToolsList ? params.genomes[params.genome].ac_loci ?: null : null
+  params.ac_loci_gc = params.genome && 'ascat' in inputToolsList ? params.genomes[params.genome].ac_loci_gc ?: null : null
+  params.bwa = params.genome && params.fasta && 'mapping' in inputStep ? params.genomes[params.genome].bwa ?: null : null
+  params.chr_dir = params.genome && 'controlfreec' in inputToolsList ? params.genomes[params.genome].chr_dir ?: null : null
+  params.chr_length = params.genome && 'controlfreec' in inputToolsList ? params.genomes[params.genome].chr_length ?: null : null
+  params.dbsnp = params.genome && ('mapping' in inputStep || 'preparerecalibration' in inputStep || 'controlfreec' in inputToolsList || 'haplotypecaller' in inputToolsList || 'mutect2' in inputToolsList || params.sentieon) ? params.genomes[params.genome].dbsnp ?: null : null
+  params.dbsnp_index = params.genome && params.dbsnp ? params.genomes[params.genome].dbsnp_index ?: null : null
+  params.dict = params.genome && params.fasta ? params.genomes[params.genome].dict ?: null : null
+  params.fasta_fai = params.genome && params.fasta ? params.genomes[params.genome].fasta_fai ?: null : null
+  params.germline_resource = params.genome && 'mutect2' in inputToolsList ? params.genomes[params.genome].germline_resource ?: null : null
+  params.germline_resource_index = params.genome && params.germline_resource ? params.genomes[params.genome].germline_resource_index ?: null : null
+  params.intervals = params.genome && !('annotate' in inputStep) ? params.genomes[params.genome].intervals ?: null : null
+  params.known_indels = params.genome && ('mapping' in inputStep || 'preparerecalibration' in inputStep) ? params.genomes[params.genome].known_indels ?: null : null
+  params.known_indels_index = params.genome && params.known_indels ? params.genomes[params.genome].known_indels_index ?: null : null
+  params.mappability = params.genome && 'controlfreec' in inputToolsList ? params.genomes[params.genome].mappability ?: null : null
+  params.snpeff_db = params.genome && ('snpeff' in inputToolsList || 'merge' in inputToolsList) ? params.genomes[params.genome].snpeff_db ?: null : null
+  params.species = params.genome && ('vep' in inputToolsList || 'merge' in inputToolsList) ? params.genomes[params.genome].species ?: null : null
+  params.vep_cache_version = params.genome && ('vep' in inputToolsList || 'merge' in inputToolsList) ? params.genomes[params.genome].vep_cache_version ?: null : null
 }
