@@ -11,7 +11,7 @@ include {
 step = getInputStep()
 tools = getInputTools(step)
 skipQC = getInputSkipQC()
-tsvPath = getInputTsvPath()
+tsvPath = getInputTsvPath(step)
 
 initializeParamsScope(step, tools)
 

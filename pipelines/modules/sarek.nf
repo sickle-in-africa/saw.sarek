@@ -315,13 +315,13 @@ def getOutputDocsImagesFile(){
 def getSavedBamMapped() {
   params.skip_markduplicates ? true : params.save_bam_mapped ? true : false
 }
-def getInputTsvPath() {
+def getInputTsvPath(step) {
 
   if ( isInputTsvFileSpecified() ) {
     return getTsvPathFromUserInput()
   }
   else {
-    return getTsvPathFromOutputOfPreviousStep()
+    return getTsvPathFromOutputOfPreviousStep(step)
     // only for steps:
     //    + preparerecalibration
     //    + recalibrate
@@ -332,9 +332,9 @@ def getInputTsvPath() {
 def getTsvPathFromUserInput() {
   return params.input
 }
-def getTsvPathFromOutputOfPreviousStep() {
+def getTsvPathFromOutputOfPreviousStep(currentStep) {
   if (!params.skip_markduplicates) {
-      switch (step) {
+      switch (currentStep) {
           case 'mapping': break
           case 'preparerecalibration': return "${params.outdir}/Preprocessing/TSV/duplicates_marked_no_table.tsv"; break
           case 'recalibrate': return "${params.outdir}/Preprocessing/TSV/duplicates_marked.tsv"; break
@@ -348,17 +348,17 @@ def getTsvPathFromOutputOfPreviousStep() {
             break
           case 'controlfreec': return "${params.outdir}/VariantCalling/TSV/control-freec_mpileup.tsv"; break
           case 'annotate': break
-          default: exit 1, "Unknown step ${step}"
+          default: exit 1, "Unknown step ${currentStep}"
       }
   } else if (params.skip_markduplicates) {
-      switch (step) {
+      switch (currentStep) {
           case 'mapping': break
           case 'preparerecalibration': return "${params.outdir}/Preprocessing/TSV/mapped.tsv"; break
           case 'recalibrate': return "${params.outdir}/Preprocessing/TSV/mapped_no_duplicates_marked.tsv"; break
           case 'variantcalling': return "${params.outdir}/Preprocessing/TSV/recalibrated.tsv"; break
           case 'controlfreec': return"${params.outdir}/VariantCalling/TSV/control-freec_mpileup.tsv"; break
           case 'annotate': break
-          default: exit 1, "Unknown step ${step}"
+          default: exit 1, "Unknown step ${currentStep}"
       }
   } 
 }

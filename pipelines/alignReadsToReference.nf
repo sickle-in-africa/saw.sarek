@@ -78,7 +78,7 @@ skipQC = getInputSkipQC()
 annotate_tools = getInputListOfAnnotationTools()
 custom_runName = getCustomRunName()
 save_bam_mapped = getSavedBamMapped()
-tsvPath = getInputTsvPath()
+tsvPath = getInputTsvPath(step)
 
 initializeParamsScope(step, tools)
 
