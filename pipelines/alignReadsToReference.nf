@@ -42,7 +42,11 @@ include {
 } from "${params.modulesDir}/sarek.nf"
 
 include {
-    BuildBWAindexes;
+    initializeInputChannelsForMapping
+} from "${params.modulesDir}/inputs.nf"
+
+include {
+    GetBWAindexes;
     BuildDict;
     BuildFastaFai;
     BuildDbsnpIndex;
@@ -72,7 +76,7 @@ include {
 
 printHelpMessageAndExitIfUserAsks()
 
-step = getInputStep()
+step = 'mapping'
 tools = getInputTools(step)
 skipQC = getInputSkipQC()
 annotate_tools = getInputListOfAnnotationTools()
@@ -86,16 +90,7 @@ initializeParamsScope(step, tools)
 //summaryMap = getSummaryMapFromParamsScopeAndArgs(step, custom_runName, skipQC, tools)
 // getSummaryMapFrom...() needs to be called after initializeParamsScope()
 
-checkHostname()
-checkInputReferenceGenomeExists()
-checkInputStepIsValid(step)
-checkInputToolsExist(tools)
-checkInputSkippedQCToolsExist(skipQC)
-checkInputListOfAnnotationToolsValid(annotate_tools)
-checkInputAscatParametersValid()
-checkInputReadStructureParametersValid()
-checkAwsBatchSettings()
-checkInputTsvPath(tsvPath)
+
 
 //printNfcoreSarekWelcomeGraphic()
 //printSummaryMessage(summaryMap)
@@ -106,54 +101,64 @@ ch_multiqc_custom_config = getMultiqcCustomConfigFileAsChannel()
 ch_output_docs = getOutputDocsFile()
 ch_output_docs_images = getOutputDocsImagesFile()
 
-inputSample = getInputSampleListAsChannel(tsvPath, step)
-
-(genderMap, statusMap, inputSample) = extractInfos(inputSample)
+//inputSample = getInputSampleListAsChannel(tsvPath, step)
 
 
 workflow {
 
-    /*  Get indexes as channels  */
+    //  Get indexes as channels  //
 
-    ch_fasta = params.fasta && !('annotate' in step) ? Channel.value(file(params.fasta)) : "null"
-    ch_dbsnp = params.dbsnp && ('mapping' in step || 'preparerecalibration' in step || 'controlfreec' in tools || 'haplotypecaller' in tools || 'mutect2' in tools || params.sentieon) ? Channel.value(file(params.dbsnp)) : "null"
-    ch_germline_resource = params.germline_resource && 'mutect2' in tools ? Channel.value(file(params.germline_resource)) : "null"
-    ch_known_indels = params.known_indels && ('mapping' in step || 'preparerecalibration' in step) ? Channel.value(file(params.known_indels)) : "null"
-    ch_pon = params.pon ? Channel.value(file(params.pon)) : "null"
-    ch_fai = params.fasta_fai && !('annotate' in step) ? Channel.value(file(params.fasta_fai)) : "null"
-    ch_intervals = params.intervals && !params.no_intervals && !('annotate' in step) ? Channel.value(file(params.intervals)) : "null"
+    (genderMap,\
+     statusMap,\
+     inputSample,\
+     _step_,\
+     ch_fasta,\
+     ch_dbsnp,\
+     ch_germline_resource,\
+     ch_known_indels,\
+     ch_pon,\
+     ch_fai,\
+     ch_intervals,
+     ch_read_structure1,
+     ch_read_structure2,
+     _bwa_)\
+        = initializeInputChannelsForMapping(tools)
 
-    // Optional values, not defined within the params.genomes[params.genome] scope
-    ch_read_structure1 = params.read_structure1 ? Channel.value(params.read_structure1) : "null"
-    ch_read_structure2 = params.read_structure2 ? Channel.value(params.read_structure2) : "null"
+    ch_bwa = GetBWAindexes(ch_fasta, _bwa_)
+    
+    //ch_bwa.dump(tag: 'bwa')
 
-    BuildBWAindexes(ch_fasta).set { bwa_built }
-    ch_bwa = params.bwa ? Channel.value(file(params.bwa)) : bwa_built
+    dictBuilt = BuildDict(ch_fasta)
 
-    BuildDict(ch_fasta).set { dictBuilt }
     ch_dict = params.dict ? Channel.value(file(params.dict)) : dictBuilt
 
-    BuildFastaFai(ch_fasta).set { fai_built }
+    fai_built = BuildFastaFai(ch_fasta)
+
     ch_fai_update = params.fasta_fai ? Channel.value(file(params.fasta_fai)) : fai_built
 
-    BuildDbsnpIndex(ch_dbsnp).set { dbsnp_tbi }
+    dbsnp_tbi = BuildDbsnpIndex(ch_dbsnp)
+
     ch_dbsnp_tbi = params.dbsnp ? params.dbsnp_index ? Channel.value(file(params.dbsnp_index)) : dbsnp_tbi : "null"
 
-    BuildGermlineResourceIndex(ch_germline_resource).set { germline_resource_tbi }
+    germline_resource_tbi = BuildGermlineResourceIndex(ch_germline_resource)
+
     ch_germline_resource_tbi = params.germline_resource ? params.germline_resource_index ? Channel.value(file(params.germline_resource_index)) : germline_resource_tbi : "null"
 
-    BuildKnownIndelsIndex(ch_known_indels).set { known_indels_tbi }
+    known_indels_tbi = BuildKnownIndelsIndex(ch_known_indels)
+
     ch_known_indels_tbi = params.known_indels ? params.known_indels_index ? Channel.value(file(params.known_indels_index)) : known_indels_tbi.collect() : "null"
 
-    BuildPonIndex(ch_pon).set { pon_tbi }
+    pon_tbi = BuildPonIndex(ch_pon)
+
     ch_pon_tbi = params.pon ? params.pon_index ? Channel.value(file(params.pon_index)) : pon_tbi : "null"
 
-    BuildIntervals(ch_fai_update).set { intervalBuilt }
+    intervalBuilt = BuildIntervals(ch_fai_update)
+
     ch_intervals_update = params.no_intervals ? "null" : (params.intervals && !('annotate' in step)) ? Channel.value(file(params.intervals)) : intervalBuilt
 
-    /*  preprocess reads  */
+    //  preprocess reads  //
 
-    CreateIntervalBeds(ch_intervals_update).flatten().set { bedIntervals }
+    bedIntervals = CreateIntervalBeds(ch_intervals_update).flatten()
 
     bedIntervals = bedIntervals
         .map { intervalFile ->
@@ -189,7 +194,7 @@ workflow {
         bam: hasExtension(it[3], "bam")
         pairReads: !hasExtension(it[3], "bam")
     }
-    .set { input }
+        .set { input }
     inputBam = input.bam
     inputPairReads = input.pairReads
 
@@ -229,9 +234,12 @@ workflow {
     inputPairReadsFastQC = inputPairReads
     inputPairReadsUMI = inputPairReads
 
-    FastQCFQ(inputPairReadsFastQC).set { fastQCFQReport }
 
-    FastQCBAM(inputBamFastQC).set { fastQCBAMReport }
+    fastQCFQReport = FastQCFQ(inputPairReadsFastQC)
+
+
+
+    fastQCBAMReport = FastQCBAM(inputBamFastQC)
 
     fastQCReport = fastQCFQReport.mix(fastQCBAMReport)
 
@@ -239,7 +247,8 @@ workflow {
 
     (trimGaloreReport, outputPairReadsTrimGalore) = TrimGalore(inputPairReadsTrimGalore)
 
-    /*  UMIs processing  */
+    //  UMIs processing  //
+
 
     umi_converted_bams_ch = UMIFastqToBAM(inputPairReadsUMI, ch_read_structure1, ch_read_structure2)
 
@@ -249,7 +258,7 @@ workflow {
 
     consensus_bam_ch = CallMolecularConsensusReads(umi_grouped_bams_ch)
 
-    /*  map reads to reference  */
+    //  map reads to reference  //
 
     input_pair_reads_sentieon = Channel.empty()
 
@@ -324,7 +333,7 @@ workflow {
             ["mapped_${idSample}.tsv", "${idPatient}\t${gender}\t${status}\t${idSample}\t${bam}\t${bai}\n"]
     }
 
-    /*  mark duplicates  */
+    //  mark duplicates  //
 
     (bam_duplicates_marked, tsv_bam_duplicates_marked, duplicates_marked_report) = MarkDuplicates(bam_mapped_merged)
 
@@ -354,6 +363,8 @@ workflow {
     bam_duplicates_marked.dump(tag:'MD BAM')
    
     duplicates_marked_report.dump(tag:'MD Report')
+
+    /**/
 
 }
 

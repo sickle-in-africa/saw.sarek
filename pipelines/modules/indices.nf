@@ -9,7 +9,10 @@ tools = getInputTools(step)
 initializeParamsScope(step, tools)
 
 
-process BuildBWAindexes {
+process GetBWAindexes {
+    // if the BWA indexes are available on igenomes, 
+    // pull them, otherwise build them locally
+
     tag "${fasta}"
 
     publishDir params.outdir, mode: params.publish_dir_mode,
@@ -17,17 +20,23 @@ process BuildBWAindexes {
 
     input:
         file(fasta)
+        file(_bwa_)
 
     output:
-        file("${fasta}.*")
+        path("${fasta}.*"), includeInputs: true
 
-    when: !(params.bwa) && params.fasta && 'mapping' in step
+    when: params.fasta // && 'mapping' in step
 
     script:
     aligner = params.aligner == "bwa-mem2" ? "bwa-mem2" : "bwa"
-    """
-    ${aligner} index ${fasta}
-    """
+    if ( !('NULL' =~ _bwa_) )
+        """
+        : # do nothing. They will get automatically pulled from iGenomes
+        """
+    else
+        """
+        ${aligner} index ${fasta}
+        """
 }
 
 process BuildDict {
