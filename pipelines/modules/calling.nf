@@ -1,25 +1,8 @@
 include {
-    getInputStep;
-    getInputTools;
-    getInputTsvPath;
-    getInputSkipQC;
-    hasExtension;
-    getInputSampleListAsChannel;
-    extractInfos
+    isChannelActive
 } from "${params.modulesDir}/sarek.nf"
 
-step = 'variantcalling'
-tools = getInputTools(step)
-skipQC = getInputSkipQC()
-tsvPath = getInputTsvPath(step)
-
-initializeParamsScope(step, tools)
-
-inputSample = getInputSampleListAsChannel(tsvPath, step)
-
-(genderMap, statusMap, inputSample) = extractInfos(inputSample)
-
-process get_software_versions {
+process GetSoftwareVersions {
     publishDir "${params.outdir}/pipeline_info", mode: params.publish_dir_mode,
         saveAs: {it.indexOf(".csv") > 0 ? it : null}
 
@@ -68,8 +51,8 @@ process HaplotypeCaller {
 
     input:
         tuple val(idPatient), val(idSample), file(bam), file(bai), file(intervalBed)
-        //file(dbsnp) from ch_dbsnp
-        //file(dbsnpIndex) from ch_dbsnp_tbi
+        path(dbsnp)
+        path(dbsnpIndex)
         file(dict)
         file(fasta)
         file(fastaFai)
@@ -84,7 +67,7 @@ process HaplotypeCaller {
     //javaOptions = "-Xmx${task.memory.toGiga()}g -Xms6000m -XX:GCTimeLimit=50 -XX:GCHeapFreeLimit=10"
     javaOptions = ""
     intervalsOptions = params.no_intervals ? "" : "-L ${intervalBed}"
-    dbsnpOptions = "" //params.dbsnp ? "--D ${dbsnp}" : ""
+    dbsnpOptions = isChannelActive(dbsnp) ? "--D ${dbsnp}" : ""
     """
     gatk --java-options "${javaOptions}" \
         HaplotypeCaller \
@@ -102,8 +85,8 @@ process GenotypeGVCFs {
 
     input:
         tuple val(idPatient), val(idSample), file(intervalBed), file(gvcf)
-        //file(dbsnp) from ch_dbsnp
-        //file(dbsnpIndex) from ch_dbsnp_tbi
+        file(dbsnp)
+        file(dbsnpIndex)
         file(dict)
         file(fasta)
         file(fastaFai)
@@ -116,7 +99,7 @@ process GenotypeGVCFs {
     script:
     // Using -L is important for speed and we have to index the interval files also
     intervalsOptions = params.no_intervals ? "" : "-L ${intervalBed}"
-    dbsnpOptions = params.dbsnp ? "--D ${dbsnp}" : ""
+    dbsnpOptions = isChannelActive(dbsnp) ? "--D ${dbsnp}" : ""
     """
     gatk --java-options -Xmx${task.memory.toGiga()}g \
         IndexFeatureFile \
@@ -152,8 +135,8 @@ process StrelkaSingle {
     //when: 'strelka' in tools
 
     script:
-    beforeScript = params.target_bed ? "bgzip --threads ${task.cpus} -c ${targetBED} > call_targets.bed.gz ; tabix call_targets.bed.gz" : ""
-    options = params.target_bed ? "--exome --callRegions call_targets.bed.gz" : ""
+    beforeScript = isChannelActive(targetBED) ? "bgzip --threads ${task.cpus} -c ${targetBED} > call_targets.bed.gz ; tabix call_targets.bed.gz" : ""
+    options = isChannelActive(targetBED) ? "--exome --callRegions call_targets.bed.gz" : ""
     """
     ${beforeScript}
     configureStrelkaGermlineWorkflow.py \
@@ -198,9 +181,8 @@ process MantaSingle {
     script:
     beforeScript = params.target_bed ? "bgzip --threads ${task.cpus} -c ${targetBED} > call_targets.bed.gz ; tabix call_targets.bed.gz" : ""
     options = params.target_bed ? "--exome --callRegions call_targets.bed.gz" : ""
-    status = statusMap[idPatient, idSample]
-    inputbam = status == 0 ? "--bam" : "--tumorBam"
-    vcftype = status == 0 ? "diploid" : "tumor"
+    inputbam = "--bam" 
+    vcftype = "diploid"
     """
     ${beforeScript}
     configManta.py \
@@ -276,7 +258,7 @@ process FreebayesSingle {
     //when: 'freebayes' in tools
 
     script:
-    intervalsOptions = params.no_intervals ? "" : "-t ${intervalBed}"
+    intervalsOptions = "-t ${intervalBed}"
     """
     freebayes \
         -f ${fasta} \
@@ -318,27 +300,17 @@ process ConcatVCF {
     """
 }
 
-def initializeParamsScope(inputStep, inputToolsList) {
-  // Initialize each params in params.genomes, catch the command line first if it was defined
-  // params.fasta has to be the first one
-  params.fasta = params.genome && !('annotate' in inputStep) ? params.genomes[params.genome].fasta ?: null : null
-  // The rest can be sorted
-  params.ac_loci = params.genome && 'ascat' in inputToolsList ? params.genomes[params.genome].ac_loci ?: null : null
-  params.ac_loci_gc = params.genome && 'ascat' in inputToolsList ? params.genomes[params.genome].ac_loci_gc ?: null : null
-  params.bwa = params.genome && params.fasta && 'mapping' in inputStep ? params.genomes[params.genome].bwa ?: null : null
-  params.chr_dir = params.genome && 'controlfreec' in inputToolsList ? params.genomes[params.genome].chr_dir ?: null : null
-  params.chr_length = params.genome && 'controlfreec' in inputToolsList ? params.genomes[params.genome].chr_length ?: null : null
-  params.dbsnp = params.genome && ('mapping' in inputStep || 'preparerecalibration' in inputStep || 'controlfreec' in inputToolsList || 'haplotypecaller' in inputToolsList || 'mutect2' in inputToolsList || params.sentieon) ? params.genomes[params.genome].dbsnp ?: null : null
-  params.dbsnp_index = params.genome && params.dbsnp ? params.genomes[params.genome].dbsnp_index ?: null : null
-  params.dict = params.genome && params.fasta ? params.genomes[params.genome].dict ?: null : null
-  params.fasta_fai = params.genome && params.fasta ? params.genomes[params.genome].fasta_fai ?: null : null
-  params.germline_resource = params.genome && 'mutect2' in inputToolsList ? params.genomes[params.genome].germline_resource ?: null : null
-  params.germline_resource_index = params.genome && params.germline_resource ? params.genomes[params.genome].germline_resource_index ?: null : null
-  params.intervals = params.genome && !('annotate' in inputStep) ? params.genomes[params.genome].intervals ?: null : null
-  params.known_indels = params.genome && ('mapping' in inputStep || 'preparerecalibration' in inputStep) ? params.genomes[params.genome].known_indels ?: null : null
-  params.known_indels_index = params.genome && params.known_indels ? params.genomes[params.genome].known_indels_index ?: null : null
-  params.mappability = params.genome && 'controlfreec' in inputToolsList ? params.genomes[params.genome].mappability ?: null : null
-  params.snpeff_db = params.genome && ('snpeff' in inputToolsList || 'merge' in inputToolsList) ? params.genomes[params.genome].snpeff_db ?: null : null
-  params.species = params.genome && ('vep' in inputToolsList || 'merge' in inputToolsList) ? params.genomes[params.genome].species ?: null : null
-  params.vep_cache_version = params.genome && ('vep' in inputToolsList || 'merge' in inputToolsList) ? params.genomes[params.genome].vep_cache_version ?: null : null
+def groupVcfChannelsAcrossIntervalsAndMix(\
+    gvcfHaplotypeCaller,\
+    vcfGenotypeGVCFs,\
+    vcfFreebayesSingle) {
+
+    gvcfHaplotypeCallerGrouped = gvcfHaplotypeCaller.groupTuple(by:[0, 1, 2])
+    vcfGenotypeGVCFsGrouped = vcfGenotypeGVCFs.groupTuple(by:[0, 1, 2])
+    vcfFreebayesSingleGrouped = vcfFreebayesSingle.groupTuple(by: [0,1,2])
+
+    return Channel
+            .empty()
+            .mix(vcfFreebayesSingleGrouped, vcfGenotypeGVCFsGrouped, gvcfHaplotypeCallerGrouped)
+
 }

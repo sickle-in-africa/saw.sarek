@@ -10,12 +10,10 @@ include {
     GetGatkDictionary;
     GetSamtoolsFastaIndex;
     GetDbsnpIndex;
-    GetKnownIndelsIndex;
-    GetIntervalsList
+    GetKnownIndelsIndex
 } from "${params.modulesDir}/indices.nf"
 
 include {
-    CreateIntervalBeds;
     FastQCFQ;
     FastQCBAM;
     TrimGalore;
@@ -23,7 +21,6 @@ include {
     UMIMapBamFile;
     GroupReadsByUmi;
     CallMolecularConsensusReads;
-    addIntervalDurationsToIntervalsChannel;
     splitInputsIntoBamAndFastaPairs;
     stripSecondInputFile;
     splitFastqFiles;
@@ -49,7 +46,6 @@ workflow {
      _fastaFai_,
      _dbsnp_,
      _knownIndels_,
-     _intervalsList_,
      __genderMap__,
      __statusMap__)\
         = initializeInputChannelsForMapping()
@@ -66,14 +62,8 @@ workflow {
 
     ch_known_indels_tbi = GetKnownIndelsIndex(_knownIndels_)
 
-    ch_intervals = GetIntervalsList(ch_fai, _intervalsList_)
 
     //  preprocess reads  //
-
-    bedIntervals = CreateIntervalBeds(ch_intervals).flatten()
-
-    bedIntervalsWithDurations\
-        = addIntervalDurationsToIntervalsChannel(bedIntervals)
 
     (inputBam,\
      inputPairReads)\
@@ -156,7 +146,7 @@ workflow {
         tsv_bam_indexed,\
         __genderMap__,\
         __statusMap__)
-    
+
     writeTsvFilesForBamsWithDuplicatesMarked(\
         tsv_bam_duplicates_marked,\
         __genderMap__,\

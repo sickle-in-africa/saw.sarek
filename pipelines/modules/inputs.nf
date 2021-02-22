@@ -55,10 +55,6 @@ def initializeInputChannelsForMapping() {
 
     (__genderMap__, __statusMap__, inputSample) = extractInfos(inputSample)
 
-    // Optional values, not defined within the params.genomes[params.genome] scope
-    ch_read_structure1 = params.read_structure1 ? Channel.value(params.read_structure1) : "null"
-    ch_read_structure2 = params.read_structure2 ? Channel.value(params.read_structure2) : "null"
-
     _fasta_ = params.fasta ? Channel.value(file(params.fasta)) : getInactiveChannel()
     _bwa_ = params.bwa ? Channel.value(file(params.bwa)) : getInactiveChannel()
     _dict_ = params.dict ? Channel.value(file(params.dict)) : getInactiveChannel()
@@ -66,10 +62,6 @@ def initializeInputChannelsForMapping() {
     _dbsnp_ = params.dbsnp ? Channel.value(file(params.dbsnp)) : getInactiveChannel()
     _knownIndels_ = params.known_indels ? Channel.value(file(params.known_indels)) : getInactiveChannel()
     _intervalsList_ = params.intervals ? Channel.value(file(params.intervals)) : getInactiveChannel()
-
-    _trimFastq_ = params.trim_fastq == true ? Channel.value(params.trim_fastq) : getInactiveChannel()
-    _processUmi_ = params.umi == true ? Channel.value(params.umi) : getInactiveChannel()
-    _splitFastq_ = params.split_fastq == true ? Channel.value(params.split_fastq) : getInactiveChannel()
 
     return [\
         inputSample,\
@@ -79,7 +71,53 @@ def initializeInputChannelsForMapping() {
         _fastaFai_,
         _dbsnp_,
         _knownIndels_,
+        __genderMap__,\
+        __statusMap__]
+
+}
+
+def initializeInputChannelsForCalling() {
+
+    step = 'variantcalling'
+    tools = getInputTools(step)
+    skipQC = getInputSkipQC()
+    annotate_tools = getInputListOfAnnotationTools()
+    tsvPath = getInputTsvPath(step)
+
+    initializeParamsScope(step, tools)
+
+    checkHostname()
+    checkInputReferenceGenomeExists()
+    checkInputStepIsValid(step)
+    checkInputToolsExist(tools)
+    checkInputSkippedQCToolsExist(skipQC)
+    checkInputListOfAnnotationToolsValid(annotate_tools)
+    checkInputAscatParametersValid()
+    checkInputReadStructureParametersValid()
+    checkAwsBatchSettings()
+    checkInputTsvPath(tsvPath)
+
+    inputSample = getInputSampleListAsChannel(tsvPath, step)
+
+    (__genderMap__, __statusMap__, inputSample) = extractInfos(inputSample)
+
+    _fasta_ = params.fasta ? Channel.value(file(params.fasta)) : getInactiveChannel()
+    _dict_ = params.dict ? Channel.value(file(params.dict)) : getInactiveChannel()
+    _fastaFai_ = params.fasta_fai ? Channel.value(file(params.fasta_fai)) : getInactiveChannel()
+    _dbsnp_ = params.dbsnp ? Channel.value(file(params.dbsnp)) : getInactiveChannel()
+    _knownIndels_ = params.known_indels ? Channel.value(file(params.known_indels)) : getInactiveChannel()
+    _intervalsList_ = params.intervals ? Channel.value(file(params.intervals)) : getInactiveChannel()
+
+    _targetBed_ = params.target_bed ? Channel.value(file(params.target_bed)) : getInactiveChannel()
+
+    return [\
+        inputSample,\
+        _fasta_,
+        _dict_,
+        _fastaFai_,
+        _dbsnp_,
         _intervalsList_,
+        _targetBed_,
         __genderMap__,\
         __statusMap__]
 
