@@ -11,6 +11,7 @@ include {
     getInputSkipQC;
     getInputListOfAnnotationTools;
     getInputSampleListAsChannel;
+    getInactiveChannel;
 
     hasExtension;
     extractInfos;
@@ -23,11 +24,13 @@ include {
     checkInputAscatParametersValid;
     checkInputReadStructureParametersValid;
     checkAwsBatchSettings;
-    checkInputTsvPath
+    checkInputTsvPath;
+
+    isChannelActive
 } from "${params.modulesDir}/sarek.nf"
 
 
-def initializeInputChannelsForMapping(tools) {
+def initializeInputChannelsForMapping() {
 
     step = 'mapping'
     tools = getInputTools(step)
@@ -50,39 +53,35 @@ def initializeInputChannelsForMapping(tools) {
 
     inputSample = getInputSampleListAsChannel(tsvPath, step)
 
-    (genderMap, statusMap, inputSample) = extractInfos(inputSample)
-
-    _step_ = Channel.value(step)
-    ch_fasta = params.fasta && !('annotate' in step) ? Channel.value(file(params.fasta)) : "null"
-    ch_dbsnp = params.dbsnp && ('mapping' in step || 'preparerecalibration' in step || 'controlfreec' in tools || 'haplotypecaller' in tools || 'mutect2' in tools || params.sentieon) ? Channel.value(file(params.dbsnp)) : "null"
-    ch_germline_resource = params.germline_resource && 'mutect2' in tools ? Channel.value(file(params.germline_resource)) : "null"
-    ch_known_indels = params.known_indels && ('mapping' in step || 'preparerecalibration' in step) ? Channel.value(file(params.known_indels)) : "null"
-    ch_pon = params.pon ? Channel.value(file(params.pon)) : "null"
-    ch_fai = params.fasta_fai && !('annotate' in step) ? Channel.value(file(params.fasta_fai)) : "null"
-    ch_intervals = params.intervals && !params.no_intervals && !('annotate' in step) ? Channel.value(file(params.intervals)) : "null"
+    (__genderMap__, __statusMap__, inputSample) = extractInfos(inputSample)
 
     // Optional values, not defined within the params.genomes[params.genome] scope
     ch_read_structure1 = params.read_structure1 ? Channel.value(params.read_structure1) : "null"
     ch_read_structure2 = params.read_structure2 ? Channel.value(params.read_structure2) : "null"
 
-    _bwa_ = params.bwa ? Channel.value(file(params.bwa)) : Channel.value(file('NULL'))
-    //_bwa_ = Channel.value(file('NULL'))
+    _fasta_ = params.fasta ? Channel.value(file(params.fasta)) : getInactiveChannel()
+    _bwa_ = params.bwa ? Channel.value(file(params.bwa)) : getInactiveChannel()
+    _dict_ = params.dict ? Channel.value(file(params.dict)) : getInactiveChannel()
+    _fastaFai_ = params.fasta_fai ? Channel.value(file(params.fasta_fai)) : getInactiveChannel()
+    _dbsnp_ = params.dbsnp ? Channel.value(file(params.dbsnp)) : getInactiveChannel()
+    _knownIndels_ = params.known_indels ? Channel.value(file(params.known_indels)) : getInactiveChannel()
+    _intervalsList_ = params.intervals ? Channel.value(file(params.intervals)) : getInactiveChannel()
 
-    return [
-        genderMap,\
-        statusMap,\
+    _trimFastq_ = params.trim_fastq == true ? Channel.value(params.trim_fastq) : getInactiveChannel()
+    _processUmi_ = params.umi == true ? Channel.value(params.umi) : getInactiveChannel()
+    _splitFastq_ = params.split_fastq == true ? Channel.value(params.split_fastq) : getInactiveChannel()
+
+    return [\
         inputSample,\
-        _step_,\
-        ch_fasta,\
-        ch_dbsnp,\
-        ch_germline_resource,\
-        ch_known_indels,\
-        ch_pon,\
-        ch_fai,\
-        ch_intervals,
-        ch_read_structure1,
-        ch_read_structure2,
-        _bwa_]
+        _fasta_,
+        _bwa_,
+        _dict_,
+        _fastaFai_,
+        _dbsnp_,
+        _knownIndels_,
+        _intervalsList_,
+        __genderMap__,\
+        __statusMap__]
 
 }
 

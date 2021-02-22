@@ -1,6 +1,8 @@
 include {
     getInputStep;
-    getInputTools
+    getInputTools;
+    isChannelActive;
+    getInactiveChannelFlag
 } from "${params.modulesDir}/sarek.nf"
 
 step = getInputStep()
@@ -9,7 +11,7 @@ tools = getInputTools(step)
 initializeParamsScope(step, tools)
 
 
-process GetBWAindexes {
+process GetBwaIndexes {
     // if the BWA indexes are available on igenomes, 
     // pull them, otherwise build them locally
 
@@ -19,167 +21,162 @@ process GetBWAindexes {
         saveAs: {params.save_reference ? "reference_genome/BWAIndex/${it}" : null }
 
     input:
-        file(fasta)
-        file(_bwa_)
+        path(fasta)
+        path(_bwa_)
 
     output:
         path("${fasta}.*"), includeInputs: true
 
-    when: params.fasta // && 'mapping' in step
+    when: params.fasta
 
     script:
-    aligner = params.aligner == "bwa-mem2" ? "bwa-mem2" : "bwa"
-    if ( !('NULL' =~ _bwa_) )
-        """
-        : # do nothing. They will get automatically pulled from iGenomes
-        """
-    else
-        """
-        ${aligner} index ${fasta}
-        """
+        aligner = params.aligner == "bwa-mem2" ? "bwa-mem2" : "bwa"
+        if ( isChannelActive(_bwa_) == true )
+            """
+            : # do nothing. Indexes will get automatically pulled from iGenomes
+            """
+        else
+            """
+            ${aligner} index ${fasta}
+            """
 }
 
-process BuildDict {
+process GetGatkDictionary {
+    // if the gatk dictionary is available on igenomes,
+    // pull it, otherwise build it locally
     tag "${fasta}"
 
     publishDir params.outdir, mode: params.publish_dir_mode,
         saveAs: {params.save_reference ? "reference_genome/${it}" : null }
 
     input:
-        file(fasta)
+        path(fasta)
+        path(_dict_)
 
     output:
-        file("${fasta.baseName}.dict")
+        path("${fasta.baseName}.dict"), includeInputs: true
 
-    when: !(params.dict) && params.fasta && !('annotate' in step) && !('controlfreec' in step)
+    when: params.fasta
 
     script:
-    """
-    gatk --java-options "-Xmx${task.memory.toGiga()}g" \
-        CreateSequenceDictionary \
-        --REFERENCE ${fasta} \
-        --OUTPUT ${fasta.baseName}.dict
-    """
+        if ( isChannelActive(_dict_) == true )
+            """
+            : # do nothing. Dictionary will get automatically pulled from iGenomes
+            """
+        else
+            """
+            gatk --java-options "-Xmx${task.memory.toGiga()}g" \
+                CreateSequenceDictionary \
+                --REFERENCE ${fasta} \
+                --OUTPUT ${fasta.baseName}.dict
+            """
+
 }
 
-process BuildFastaFai {
+process GetSamtoolsFastaIndex {
+    // if the samtools fasta index (fai) is available on iGenomes,
+    // pull it, otherwise build it locally
+
     tag "${fasta}"
 
     publishDir params.outdir, mode: params.publish_dir_mode,
         saveAs: {params.save_reference ? "reference_genome/${it}" : null }
 
     input:
-        file(fasta)
+        path(fasta)
+        path(_fastaFai_)
 
     output:
-        file("${fasta}.fai")
+        path("${fasta}.fai"), includeInputs: true
 
-    when: !(params.fasta_fai) && params.fasta && !('annotate' in step)
+    when: params.fasta
 
     script:
-    """
-    samtools faidx ${fasta}
-    """
+        if ( isChannelActive(_fastaFai_) == true )
+            """
+            : do nothing. Fasta index will be pulled from iGenomes
+            """
+        else
+            """
+            samtools faidx ${fasta}
+            """
 }
 
-process BuildDbsnpIndex {
+process GetDbsnpIndex {
+    // if the user has specified an input dbsnp file, 
+    // build the index, otherwise, emit an inactive channel
+
     tag "${dbsnp}"
 
     publishDir params.outdir, mode: params.publish_dir_mode,
         saveAs: {params.save_reference ? "reference_genome/${it}" : null }
 
     input:
-        file(dbsnp)
+        path(_dbsnp_)
 
     output:
-        file("${dbsnp}.tbi")
-
-    when: !(params.dbsnp_index) && params.dbsnp && ('mapping' in step || 'preparerecalibration' in step || 'controlfreec' in tools || 'haplotypecaller' in tools || 'mutect2' in tools || 'tnscope' in tools)
+        path("${outputPath}")
 
     script:
-    """
-    tabix -p vcf ${dbsnp}
-    """
+        outputPath = "${_dbsnp_}.tbi"
+        if ( isChannelActive(_dbsnp_) == true )
+            """
+            tabix -p vcf ${_dbsnp_}
+            """
+        else
+            outputPath = getInactiveChannelFlag()
+            """
+            touch ${outputPath}
+            """
 }
 
-process BuildGermlineResourceIndex {
-    tag "${germlineResource}"
-
-    publishDir params.outdir, mode: params.publish_dir_mode,
-        saveAs: {params.save_reference ? "reference_genome/${it}" : null }
-
-    input:
-        file(germlineResource)
-
-    output:
-        file("${germlineResource}.tbi")
-
-    when: !(params.germline_resource_index) && params.germline_resource && 'mutect2' in tools
-
-    script:
-    """
-    tabix -p vcf ${germlineResource}
-    """
-}
-
-process BuildKnownIndelsIndex {
+process GetKnownIndelsIndex {
     tag "${knownIndels}"
 
     publishDir params.outdir, mode: params.publish_dir_mode,
         saveAs: {params.save_reference ? "reference_genome/${it}" : null }
 
     input:
-        each file(knownIndels)
+        each path(_knownIndels_)
 
     output:
-        file("${knownIndels}.tbi")
-
-    when: !(params.known_indels_index) && params.known_indels && ('mapping' in step || 'preparerecalibration' in step)
+        path("${outputPath}")
 
     script:
-    """
-    tabix -p vcf ${knownIndels}
-    """
+        outputPath = "${_knownIndels_}.tbi"
+        if ( isChannelActive(_knownIndels_) == true )
+            """
+            tabix -p vcf ${_knownIndels_}
+            """
+        else
+            outputPath = getInactiveChannelFlag()
+            """
+            touch ${outputPath}
+            """
 }
 
-process BuildPonIndex {
-    tag "${pon}"
+process GetIntervalsList {
+    tag "${fastaFai}"
 
     publishDir params.outdir, mode: params.publish_dir_mode,
         saveAs: {params.save_reference ? "reference_genome/${it}" : null }
 
     input:
-        file(pon)
+        path(fastaFai)
+        path(_intervalsList_)
 
     output:
-        file("${pon}.tbi")
-
-    when: !(params.pon_index) && params.pon && ('tnscope' in tools || 'mutect2' in tools)
+        path("${fastaFai.baseName}.bed"), includeInputs: true
 
     script:
-    """
-    tabix -p vcf ${pon}
-    """
-}
-
-process BuildIntervals {
-    tag "${fastaFai}"
-
-    publishDir params.outdir, mode: params.publish_dir_mode,
-    saveAs: {params.save_reference ? "reference_genome/${it}" : null }
-
-    input:
-        file(fastaFai)
-
-    output:
-        file("${fastaFai.baseName}.bed")
-
-    when: !(params.intervals) && !('annotate' in step) && !('controlfreec' in step) 
-
-    script:
-    """
-    awk -v FS='\t' -v OFS='\t' '{ print \$1, \"0\", \$2 }' ${fastaFai} > ${fastaFai.baseName}.bed
-    """
+        if ( isChannelActive(_intervalsList_) == true )
+            """
+            : # do nothing
+            """
+        else 
+            """
+            awk -v FS='\t' -v OFS='\t' '{ print \$1, \"0\", \$2 }' ${fastaFai} > ${fastaFai.baseName}.bed
+            """ 
 }
 
 

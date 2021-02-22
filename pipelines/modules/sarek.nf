@@ -795,3 +795,15 @@ def printSummaryMessage(summaryMap) {
 def printMutec2Warning(inputToolsList) {
   if ('mutect2' in inputToolsList && !(params.pon)) log.warn "[nf-core/sarek] Mutect2 was requested, but as no panel of normals were given, results will not be optimal"
 }
+
+def getInactiveChannel() {
+    return Channel.value(file('NULL'))
+}
+
+def isChannelActive(inputChannel) {
+    return ( !('NULL' =~ inputChannel) )
+}
+
+def getInactiveChannelFlag() {
+    return 'NULL'
+}

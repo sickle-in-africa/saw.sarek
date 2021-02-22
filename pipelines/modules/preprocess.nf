@@ -1,7 +1,9 @@
 include {
     getInputStep;
     getInputTools;
-    hasExtension
+    hasExtension;
+    isChannelActive;
+    getInactiveChannelFlag
 } from "${params.modulesDir}/sarek.nf"
 
 step = getInputStep()
@@ -17,8 +19,6 @@ process CreateIntervalBeds {
 
     output:
         file '*.bed'
-
-    when: (!params.no_intervals) && step != 'annotate'
 
     script:
     // If the interval file is BED format, the fifth column is interpreted to
@@ -121,41 +121,42 @@ process TrimGalore {
 
     output:
         file("*.{html,zip,txt}")
-        tuple val(idPatient), val(idSample), val(idRun), file("${idSample}_${idRun}_R1_val_1.fq.gz"), file("${idSample}_${idRun}_R2_val_2.fq.gz")
+        tuple val(idPatient), val(idSample), val(idRun), file("${outputPaths[0]}"), file("${outputPaths[1]}")
 
-    when: params.trim_fastq
+    when:  params.trim_fastq
 
     script:
-    // Calculate number of --cores for TrimGalore based on value of task.cpus
-    // See: https://github.com/FelixKrueger/TrimGalore/blob/master/Changelog.md#version-060-release-on-1-mar-2019
-    // See: https://github.com/nf-core/atacseq/pull/65
-    def cores = 1
-    if (task.cpus) {
-      cores = (task.cpus as int) - 4
-      if (cores < 1) cores = 1
-      if (cores > 4) cores = 4
-      }
-    c_r1 = params.clip_r1 > 0 ? "--clip_r1 ${params.clip_r1}" : ''
-    c_r2 = params.clip_r2 > 0 ? "--clip_r2 ${params.clip_r2}" : ''
-    tpc_r1 = params.three_prime_clip_r1 > 0 ? "--three_prime_clip_r1 ${params.three_prime_clip_r1}" : ''
-    tpc_r2 = params.three_prime_clip_r2 > 0 ? "--three_prime_clip_r2 ${params.three_prime_clip_r2}" : ''
-    nextseq = params.trim_nextseq > 0 ? "--nextseq ${params.trim_nextseq}" : ''
-    """
-    trim_galore \
-         --cores ${cores} \
-        --paired \
-        --fastqc \
-        --gzip \
-        ${c_r1} ${c_r2} \
-        ${tpc_r1} ${tpc_r2} \
-        ${nextseq} \
-        ${idSample}_${idRun}_R1.fastq.gz ${idSample}_${idRun}_R2.fastq.gz
+        outputPaths = ["${idSample}_${idRun}_R1_val_1.fq.gz", "${idSample}_${idRun}_R2_val_2.fq.gz"]
+        // Calculate number of --cores for TrimGalore based on value of task.cpus
+        // See: https://github.com/FelixKrueger/TrimGalore/blob/master/Changelog.md#version-060-release-on-1-mar-2019
+        // See: https://github.com/nf-core/atacseq/pull/65
+        def cores = 1
+        if (task.cpus) {
+          cores = (task.cpus as int) - 4
+          if (cores < 1) cores = 1
+          if (cores > 4) cores = 4
+          }
+        c_r1 = params.clip_r1 > 0 ? "--clip_r1 ${params.clip_r1}" : ''
+        c_r2 = params.clip_r2 > 0 ? "--clip_r2 ${params.clip_r2}" : ''
+        tpc_r1 = params.three_prime_clip_r1 > 0 ? "--three_prime_clip_r1 ${params.three_prime_clip_r1}" : ''
+        tpc_r2 = params.three_prime_clip_r2 > 0 ? "--three_prime_clip_r2 ${params.three_prime_clip_r2}" : ''
+        nextseq = params.trim_nextseq > 0 ? "--nextseq ${params.trim_nextseq}" : ''
+        """
+        trim_galore \
+             --cores ${cores} \
+            --paired \
+            --fastqc \
+            --gzip \
+            ${c_r1} ${c_r2} \
+            ${tpc_r1} ${tpc_r2} \
+            ${nextseq} \
+            ${idSample}_${idRun}_R1.fastq.gz ${idSample}_${idRun}_R2.fastq.gz
 
-    mv *val_1_fastqc.html "${idSample}_${idRun}_R1.trimmed_fastqc.html"
-    mv *val_2_fastqc.html "${idSample}_${idRun}_R2.trimmed_fastqc.html"
-    mv *val_1_fastqc.zip "${idSample}_${idRun}_R1.trimmed_fastqc.zip"
-    mv *val_2_fastqc.zip "${idSample}_${idRun}_R2.trimmed_fastqc.zip"
-    """
+        mv *val_1_fastqc.html "${idSample}_${idRun}_R1.trimmed_fastqc.html"
+        mv *val_2_fastqc.html "${idSample}_${idRun}_R2.trimmed_fastqc.html"
+        mv *val_1_fastqc.zip "${idSample}_${idRun}_R1.trimmed_fastqc.zip"
+        mv *val_2_fastqc.zip "${idSample}_${idRun}_R2.trimmed_fastqc.zip"
+        """
 }
 
 // UMI - STEP 1 - ANNOTATE
@@ -166,8 +167,6 @@ process UMIFastqToBAM {
 
     input:
         tuple val(idPatient), val(idSample), val(idRun), file("${idSample}_${idRun}_R1.fastq.gz"), file("${idSample}_${idRun}_R2.fastq.gz")
-        val read_structure1
-        val read_structure2 
 
     output:
         tuple val(idPatient), val(idSample), val(idRun), file("${idSample}_umi_converted.bam")
@@ -177,23 +176,24 @@ process UMIFastqToBAM {
     // tmp folder for fgbio might be solved more elengantly?
 
     script:
-    """
-    mkdir tmp
+        """
+        mkdir tmp
 
-    fgbio --tmp-dir=${PWD}/tmp \
-    FastqToBam \
-    -i "${idSample}_${idRun}_R1.fastq.gz" "${idSample}_${idRun}_R2.fastq.gz" \
-    -o "${idSample}_umi_converted.bam" \
-    --read-structures ${read_structure1} ${read_structure2} \
-    --sample ${idSample} \
-    --library ${idSample}
-    """
+        fgbio --tmp-dir=${PWD}/tmp \
+        FastqToBam \
+        -i "${idSample}_${idRun}_R1.fastq.gz" "${idSample}_${idRun}_R2.fastq.gz" \
+        -o "${idSample}_umi_converted.bam" \
+        --read-structures ${params.read_structure1} ${params.read_structure2} \
+        --sample ${idSample} \
+        --library ${idSample}
+        """
 }
 
 // UMI - STEP 2 - MAP THE BAM FILE
 // this is necessary because the UMI groups are created based on
 // mapping position + same UMI tag
 process UMIMapBamFile {
+
     input:
         tuple val(idPatient), val(idSample), val(idRun), file(convertedBam)
         file(bwaIndex)
@@ -277,9 +277,65 @@ process CallMolecularConsensusReads {
     """
 }
 
-// ################# END OF UMI READS PRE-PROCESSING
-// from this moment on the generated uBam files can feed into the existing tools
+def addIntervalDurationsToIntervalsChannel(inputIntervalsChannel) {
+    inputIntervalsChannel.map { intervalFile ->
+            def duration = 0.0
+            for (line in intervalFile.readLines()) {
+                final fields = line.split('\t')
+                if (fields.size() >= 5) duration += fields[4].toFloat()
+                else {
+                    start = fields[1].toInteger()
+                    end = fields[2].toInteger()
+                    duration += (end - start) / params.nucleotides_per_second
+                }
+            }
+            return [duration, intervalFile]
+        }
+        .toSortedList({ a, b -> b[0] <=> a[0] })
+        .flatten().collate(2)
+        .map{duration, intervalFile -> intervalFile}
+}
 
+def splitInputsIntoBamAndFastaPairs(inputSample) {
+    // second input file is null in the case of uBam
+    input = inputSample.branch {
+        bam: hasExtension(it[3], "bam")
+        pairReads: !hasExtension(it[3], "bam")
+        }
+    
+    return [input.bam, input.pairReads]
+}
+
+def stripSecondInputFile(inputBam) {
+    return inputBam.map {
+        idPatient, idSample, idRun, inputFile1, inputFile2 ->
+        [idPatient, idSample, idRun, inputFile1]
+    }
+}
+
+def splitFastqFiles(inputPairReads) {
+    if (params.split_fastq){
+        return inputPairReads
+            // newly splitfastq are named based on split, so the name is easier to catch
+            .splitFastq(by: params.split_fastq, compress:true, file:"split", pe:true)
+            .map {idPatient, idSample, idRun, reads1, reads2 ->
+                // The split fastq read1 is the 4th element (indexed 3) its name is split_3
+                // The split fastq read2's name is split_4
+                // It's followed by which split it's acutally based on the mother fastq file
+                // Index start at 1
+                // Extracting the index to get a new IdRun
+                splitIndex = reads1.fileName.toString().minus("split_3.").minus(".gz")
+                newIdRun = idRun + "_" + splitIndex
+                // Giving the files a new nice name
+                newReads1 = file("${idSample}_${newIdRun}_R1.fastq.gz")
+                newReads2 = file("${idSample}_${newIdRun}_R2.fastq.gz")
+                [idPatient, idSample, newIdRun, reads1, reads2]
+        }
+    }
+    else {
+        return inputPairReads
+    }
+}
 
 def initializeParamsScope(inputStep, inputToolsList) {
   // Initialize each params in params.genomes, catch the command line first if it was defined

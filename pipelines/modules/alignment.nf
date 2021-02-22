@@ -34,8 +34,6 @@ process MapReads {
         tuple val(idPatient), val(idSample), val(idRun), file("${idSample}_${idRun}.bam")
         tuple val(idPatient), val("${idSample}_${idRun}"), file("${idSample}_${idRun}.bam")
 
-    when: !(params.sentieon)
-
     script:
     // -K is an hidden option, used to fix the number of reads processed by bwa mem
     // Chunk size can affect bwa results, if not specified,
@@ -153,6 +151,88 @@ process MarkDuplicates {
     """
 }
 
+def splitMappedBamsIntoSingleAndMultipeLanes(bamMapped) {
+
+    result = bamMapped
+        .groupTuple(by:[0, 1])
+        .branch {
+            single: !(it[2].size() > 1)
+            multiple: it[2].size() > 1
+        }
+
+    singleBam = result.single
+    multipleBam = result.multiple
+    
+    singleBam = singleBam.map {
+        idPatient, idSample, idRun, bam ->
+        [idPatient, idSample, bam]
+    }
+
+    return [singleBam, multipleBam]
+
+}
+
+def selectPairReadsChannelForMapping(\
+    consensus_bam_ch,\
+    outputPairReadsTrimGalore,\
+    inputPairReadsSplit) {
+
+    if ( params.umi ) {
+        preprocessedPairReads = consensus_bam_ch
+    }
+    else {
+        if ( params.trim_fastq ) {
+            preprocessedPairReads = outputPairReadsTrimGalore
+        } else {
+            preprocessedPairReads = inputPairReadsSplit
+        }
+    }
+}
+
+def writeTsvFilesForBams(tsv_bam_indexed, genderMap, statusMap) {
+
+    // Creating a TSV file to restart from this step
+    tsv_bam_indexed.map { idPatient, idSample ->
+        gender = genderMap[idPatient]
+        status = statusMap[idPatient, idSample]
+        bam = "${params.outdir}/Preprocessing/${idSample}/Mapped/${idSample}.bam"
+        bai = "${params.outdir}/Preprocessing/${idSample}/Mapped/${idSample}.bam.bai"
+        "${idPatient}\t${gender}\t${status}\t${idSample}\t${bam}\t${bai}\n"
+    }.collectFile(
+        name: 'mapped.tsv', sort: true, storeDir: "${params.outdir}/Preprocessing/TSV"
+    )
+
+    tsv_bam_indexed
+        .collectFile(storeDir: "${params.outdir}/Preprocessing/TSV") { idPatient, idSample ->
+            status = statusMap[idPatient, idSample]
+            gender = genderMap[idPatient]
+            bam = "${params.outdir}/Preprocessing/${idSample}/Mapped/${idSample}.bam"
+            bai = "${params.outdir}/Preprocessing/${idSample}/Mapped/${idSample}.bam.bai"
+            ["mapped_${idSample}.tsv", "${idPatient}\t${gender}\t${status}\t${idSample}\t${bam}\t${bai}\n"]
+    }
+}
+
+def writeTsvFilesForBamsWithDuplicatesMarked(tsv_bam_duplicates_marked, genderMap, statusMap) {
+    tsv_bam_duplicates_marked
+        .map { idPatient, idSample ->
+            gender = genderMap[idPatient]
+            status = statusMap[idPatient, idSample]
+            bam = "${params.outdir}/Preprocessing/${idSample}/DuplicatesMarked/${idSample}.md.bam"
+            bai = "${params.outdir}/Preprocessing/${idSample}/DuplicatesMarked/${idSample}.md.bam.bai"
+            "${idPatient}\t${gender}\t${status}\t${idSample}\t${bam}\t${bai}\n"
+        }.collectFile(
+            name: 'duplicates_marked_no_table.tsv', sort: true, storeDir: "${params.outdir}/Preprocessing/TSV"
+        )
+
+    tsv_bam_duplicates_marked
+        .collectFile(storeDir: "${params.outdir}/Preprocessing/TSV") { idPatient, idSample ->
+            status = statusMap[idPatient, idSample]
+            gender = genderMap[idPatient]
+            bam = "${params.outdir}/Preprocessing/${idSample}/DuplicatesMarked/${idSample}.md.bam"
+            bai = "${params.outdir}/Preprocessing/${idSample}/DuplicatesMarked/${idSample}.md.bam.bai"
+            ["duplicates_marked_no_table_${idSample}.tsv", "${idPatient}\t${gender}\t${status}\t${idSample}\t${bam}\t${bai}\n"]
+    }
+}
 
 def initializeParamsScope(inputStep, inputToolsList) {
   // Initialize each params in params.genomes, catch the command line first if it was defined
