@@ -72,7 +72,7 @@ workflow {
      gvcfGenotypeGVCFs)\
         = HaplotypeCaller(\
             inputSampleWithIntervals,\
-            _dbsnp_,\
+            _dbsnp_,
             ch_dbsnp_tbi,\
             ch_dict,\
             _fasta_,\

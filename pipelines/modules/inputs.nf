@@ -25,6 +25,7 @@ include {
     checkInputReadStructureParametersValid;
     checkAwsBatchSettings;
     checkInputTsvPath;
+    checkTrimmingAndUmiFlags;
 
     isChannelActive
 } from "${params.modulesDir}/sarek.nf"
@@ -57,20 +58,14 @@ def initializeInputChannelsForMapping() {
 
     _fasta_ = params.fasta ? Channel.value(file(params.fasta)) : getInactiveChannel()
     _bwa_ = params.bwa ? Channel.value(file(params.bwa)) : getInactiveChannel()
-    _dict_ = params.dict ? Channel.value(file(params.dict)) : getInactiveChannel()
     _fastaFai_ = params.fasta_fai ? Channel.value(file(params.fasta_fai)) : getInactiveChannel()
-    _dbsnp_ = params.dbsnp ? Channel.value(file(params.dbsnp)) : getInactiveChannel()
-    _knownIndels_ = params.known_indels ? Channel.value(file(params.known_indels)) : getInactiveChannel()
     _intervalsList_ = params.intervals ? Channel.value(file(params.intervals)) : getInactiveChannel()
 
     return [\
         inputSample,\
         _fasta_,
         _bwa_,
-        _dict_,
         _fastaFai_,
-        _dbsnp_,
-        _knownIndels_,
         __genderMap__,\
         __statusMap__]
 
@@ -96,6 +91,8 @@ def initializeInputChannelsForCalling() {
     checkInputReadStructureParametersValid()
     checkAwsBatchSettings()
     checkInputTsvPath(tsvPath)
+
+    checkTrimmingAndUmiFlags(params.trim_fastq, params.umi)
 
     inputSample = getInputSampleListAsChannel(tsvPath, step)
 

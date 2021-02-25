@@ -103,7 +103,7 @@ process FastQCBAM {
     """
 }
 
-process TrimGalore {
+process TrimReads {
     label 'TrimGalore'
 
     tag "${idPatient}-${idRun}"
@@ -198,8 +198,8 @@ process UMIMapBamFile {
         tuple val(idPatient), val(idSample), val(idRun), file(convertedBam)
         file(bwaIndex)
         file(fasta)
-        file(fastaFai)
-
+        file(fastaFai) 
+        
     output:
         tuple val(idPatient), val(idSample), val(idRun), file("${idSample}_umi_unsorted.bam")
 
@@ -296,14 +296,12 @@ def addIntervalDurationsToIntervalsChannel(inputIntervalsChannel) {
         .map{duration, intervalFile -> intervalFile}
 }
 
-def splitInputsIntoBamAndFastaPairs(inputSample) {
-    // second input file is null in the case of uBam
-    input = inputSample.branch {
+def branchReadGroupsIntoBamOrFastqChannels(readGroups) {
+    result = readGroups.branch {
         bam: hasExtension(it[3], "bam")
         pairReads: !hasExtension(it[3], "bam")
         }
-    
-    return [input.bam, input.pairReads]
+    return [result.bam, result.pairReads]
 }
 
 def stripSecondInputFile(inputBam) {
@@ -313,7 +311,7 @@ def stripSecondInputFile(inputBam) {
     }
 }
 
-def splitFastqFiles(inputPairReads) {
+def splitReadGroups(inputPairReads) {
     if (params.split_fastq){
         return inputPairReads
             // newly splitfastq are named based on split, so the name is easier to catch
@@ -335,6 +333,15 @@ def splitFastqFiles(inputPairReads) {
     else {
         return inputPairReads
     }
+}
+
+def branchReadGroupsIntoPreProcessingChannels(readGroups) {
+    result = readGroups.branch {
+        trimming: params.trim_fastq
+        umiProcessing: params.umi
+        noPreProcessing: (!params.trim_fastq && !params.umi)
+    }
+    return [result.trimming, result.umiProcessing, result.noPreProcessing]
 }
 
 def initializeParamsScope(inputStep, inputToolsList) {

@@ -1,10 +1,7 @@
-include { nfcoreHeader } from "${params.modulesDir}/nfcore.nf"
 
-/*
-================================================================================
-                                 sarek functions
-================================================================================
-*/
+import org.apache.commons.lang.RandomStringUtils
+
+include { nfcoreHeader } from "${params.modulesDir}/nfcore.nf"
 
 // Check if a row has the expected number of item
 def checkNumberOfItem(row, number) {
@@ -421,6 +418,10 @@ def checkInputTsvPath(inputTsvPath) {
   if ( hasExtension(inputTsvPath, "vcf") || hasExtension(inputTsvPath, "vcf.gz") ) exit 1, "you have specified a vcf input instead of tsv. That was perhaps meant for the annotation step."
 }
 
+def checkTrimmingAndUmiFlags(trimmingStatus, umiStatus) {
+  if (trimmingStatus && umiStatus) exit 1, "trimming and umi processing cannot be applied at the same time. Chose only one, or neither."
+} 
+
 def isInputTsvFileSpecified() {
   if (params.input) return true
   else return false
@@ -805,5 +806,12 @@ def isChannelActive(inputChannel) {
 }
 
 def getInactiveChannelFlag() {
-    return 'NULL'
+    return  "NULL-" + getRandomID(4)
+}
+
+def getRandomID(length) {
+    int randomStringLength = length
+    String charset = (('a'..'z') + ('A'..'Z') + ('0'..'9')).join()
+    String randomString = RandomStringUtils.random(randomStringLength, charset.toCharArray())
+    return randomString
 }
