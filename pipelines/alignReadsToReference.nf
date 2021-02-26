@@ -28,12 +28,16 @@
 nextflow.enable.dsl=2
 
 include {
+    groupByPatientSample
+} from "${params.modulesDir}/sarek.nf"
+
+include {
     initializeInputChannelsForMapping
 } from "${params.modulesDir}/inputs.nf"
 
 include {
     GetBwaIndexes;
-    GetSamtoolsFastaIndex
+    GetReferenceSequenceIndex
 } from "${params.modulesDir}/indices.nf"
 
 include {
@@ -51,10 +55,9 @@ include {
 
 include {
     AlignReadsToReferenceSequence;
-    MergeReadGroupsOfEachSample;
-    IndexBamFile;
+    MergeReadGroupsForSample;
+    GetIndexOfAlignedSampleReadGroup;
     MarkDuplicatesInSampleReadGroup;
-    groupReadGroupsBySampleId;
     branchIntoSingleOrMultipleGroupChannels;
     writeTsvFilesForBams;
     writeTsvFilesForBamsWithDuplicatesMarked
@@ -79,7 +82,7 @@ workflow {
             igenomesBwaIndexTuple)
     
     referenceSequenceIndex\
-        = GetSamtoolsFastaIndex(\
+        = GetReferenceSequenceIndex(\
             igenomesReferenceSequenceFasta,\
             igenomesReferenceSequenceIndex)
 
@@ -140,7 +143,7 @@ workflow {
             referenceSequenceIndex)
 
     sampleGroupsOfAlignedReadGroups\
-        = groupReadGroupsBySampleId(readGroupsAligned)
+        = groupByPatientSample(readGroupsAligned)
 
     (singleGroups,\
      multipleGroups)\
@@ -148,13 +151,13 @@ workflow {
         sampleGroupsOfAlignedReadGroups)
 
     sampleReadGroupsMerged\
-        = MergeReadGroupsOfEachSample(multipleGroups)
+        = MergeReadGroupsForSample(multipleGroups)
 
     sampleReadGroupsAligned = singleGroups.mix(sampleReadGroupsMerged)
 
-    (bam_mapped_merged_indexed,\
+    (sampleReadGroupsAlignedIndex,\
      tsv_bam_indexed)\
-        = IndexBamFile(sampleReadGroupsAligned)
+        = GetIndexOfAlignedSampleReadGroup(sampleReadGroupsAligned)
 
     //  mark duplicate reads  //
 

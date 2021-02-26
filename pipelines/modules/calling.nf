@@ -1,49 +1,10 @@
 include {
+    hasExtension;
     isChannelActive
 } from "${params.modulesDir}/sarek.nf"
 
-process GetSoftwareVersions {
-    publishDir "${params.outdir}/pipeline_info", mode: params.publish_dir_mode,
-        saveAs: {it.indexOf(".csv") > 0 ? it : null}
 
-    output:
-        file 'software_versions_mqc.yaml'
-        //file "software_versions.csv"
-
-    when: !('versions' in skipQC)
-
-    script:
-    aligner = params.aligner == "bwa-mem2" ? "bwa-mem2" : "bwa"
-    """
-    alleleCounter --version &> v_allelecount.txt 2>&1 || true
-    bcftools --version &> v_bcftools.txt 2>&1 || true
-    ${aligner} version &> v_bwa.txt 2>&1 || true
-    cnvkit.py version &> v_cnvkit.txt 2>&1 || true
-    configManta.py --version &> v_manta.txt 2>&1 || true
-    configureStrelkaGermlineWorkflow.py --version &> v_strelka.txt 2>&1 || true
-    echo "${workflow.manifest.version}" &> v_pipeline.txt 2>&1 || true
-    echo "${workflow.nextflow.version}" &> v_nextflow.txt 2>&1 || true
-    snpEff -version &> v_snpeff.txt 2>&1 || true
-    fastqc --version &> v_fastqc.txt 2>&1 || true
-    freebayes --version &> v_freebayes.txt 2>&1 || true
-    freec &> v_controlfreec.txt 2>&1 || true
-    gatk ApplyBQSR --help &> v_gatk.txt 2>&1 || true
-    msisensor &> v_msisensor.txt 2>&1 || true
-    multiqc --version &> v_multiqc.txt 2>&1 || true
-    qualimap --version &> v_qualimap.txt 2>&1 || true
-    R --version &> v_r.txt 2>&1 || true
-    R -e "library(ASCAT); help(package='ASCAT')" &> v_ascat.txt 2>&1 || true
-    samtools --version &> v_samtools.txt 2>&1 || true
-    tiddit &> v_tiddit.txt 2>&1 || true
-    trim_galore -v &> v_trim_galore.txt 2>&1 || true
-    vcftools --version &> v_vcftools.txt 2>&1 || true
-    vep --help &> v_vep.txt 2>&1 || true
-
-    ${params.sarekDir}/bin/scrape_software_versions.py &> software_versions_mqc.yaml
-    """
-}
-
-process HaplotypeCaller {
+process CallVariantsWithGatk {
     label 'memory_singleCPU_task_sq'
     label 'cpus_2'
 
@@ -58,8 +19,7 @@ process HaplotypeCaller {
         file(fastaFai)
 
     output:
-        tuple val("HaplotypeCallerGVCF"), val(idPatient), val(idSample), file("${intervalBed.baseName}_${idSample}.g.vcf")
-        tuple val(idPatient), val(idSample), file(intervalBed), file("${intervalBed.baseName}_${idSample}.g.vcf")
+        tuple val(idPatient), val(idSample), val("HaplotypeCallerGVCF"), file(intervalBed), file("${intervalBed.baseName}_${idSample}.g.vcf")
 
     //when: 'haplotypecaller' in tools
 
@@ -80,11 +40,11 @@ process HaplotypeCaller {
     """
 }
 
-process GenotypeGVCFs {
+process GenotypeVariantsFromGatk {
     tag "${idSample}-${intervalBed.baseName}"
 
     input:
-        tuple val(idPatient), val(idSample), file(intervalBed), file(gvcf)
+        tuple val(idPatient), val(idSample), val(variantCaller), file(intervalBed), file(gvcf)
         file(dbsnp)
         file(dbsnpIndex)
         file(dict)
@@ -92,7 +52,7 @@ process GenotypeGVCFs {
         file(fastaFai)
 
     output:
-    tuple val("HaplotypeCaller"), val(idPatient), val(idSample), file("${intervalBed.baseName}_${idSample}.vcf")
+    tuple val(idPatient), val(idSample), val("HaplotypeCaller"), file(intervalBed), file("${intervalBed.baseName}_${idSample}.vcf")
 
     //when: 'haplotypecaller' in tools
 
@@ -115,7 +75,7 @@ process GenotypeGVCFs {
     """
 }
 
-process StrelkaSingle {
+process CallVariantsWithStrelka {
     label 'cpus_max'
     label 'memory_max'
 
@@ -130,7 +90,7 @@ process StrelkaSingle {
         file(targetBED)
 
     output:
-        tuple val("Strelka"), val(idPatient), val(idSample), file("*.vcf.gz"), file("*.vcf.gz.tbi")
+        tuple val(idPatient), val(idSample), val("Strelka"), file("*.vcf.gz"), file("*.vcf.gz.tbi")
 
     //when: 'strelka' in tools
 
@@ -159,7 +119,7 @@ process StrelkaSingle {
 }
 
 
-process MantaSingle {
+process CallVariantsWithManta {
     label 'cpus_max'
     label 'memory_max'
 
@@ -174,7 +134,7 @@ process MantaSingle {
         file(targetBED)
 
     output:
-        tuple val("Manta"), val(idPatient), val(idSample), file("*.vcf.gz"), file("*.vcf.gz.tbi")
+        tuple val(idPatient), val(idSample), val("Manta"), file("*.vcf.gz"), file("*.vcf.gz.tbi")
 
     //when: 'manta' in tools
 
@@ -208,7 +168,7 @@ process MantaSingle {
     """
 }
 
-process TIDDIT {
+process CallVariantsWithTiddit {
     tag "${idSample}"
 
     publishDir params.outdir, mode: params.publish_dir_mode,
@@ -223,7 +183,7 @@ process TIDDIT {
         file(fastaFai)
 
     output:
-        tuple val("TIDDIT"), val(idPatient), val(idSample), file("*.vcf.gz"), file("*.tbi")
+        tuple val(idPatient), val(idSample), val("TIDDIT"), file("*.vcf.gz"), file("*.tbi")
         tuple file("TIDDIT_${idSample}.old.vcf"), file("TIDDIT_${idSample}.ploidy.tab"), file("TIDDIT_${idSample}.signals.tab"), file("TIDDIT_${idSample}.wig"), file("TIDDIT_${idSample}.gc.wig")
 
     //when: 'tiddit' in tools
@@ -242,7 +202,7 @@ process TIDDIT {
     """
 }
 
-process FreebayesSingle {
+process CallVariantsWithFreebayes {
     tag "${idSample}-${intervalBed.baseName}"
 
     label 'cpus_1'
@@ -253,7 +213,7 @@ process FreebayesSingle {
         file(fastaFai)
     
     output:
-        tuple val("FreeBayes"), val(idPatient), val(idSample), file("${intervalBed.baseName}_${idSample}.vcf")
+        tuple val(idPatient), val(idSample), val("FreeBayes"), file("${intervalBed.baseName}_${idSample}.vcf")
     
     //when: 'freebayes' in tools
 
@@ -269,7 +229,7 @@ process FreebayesSingle {
     """
 }
 
-process ConcatVCF {
+process MergeVariantSetsForSample {
     label 'concat_vcf'
     label 'cpus_8'
 
@@ -278,13 +238,13 @@ process ConcatVCF {
     publishDir "${params.outdir}/VariantCalling/${idSample}/${"$variantCaller"}", mode: params.publish_dir_mode
 
     input:
-        tuple val(variantCaller), val(idPatient), val(idSample), file(vcf)
+        tuple val(idPatient), val(idSample), val(variantCaller), file(vcf)
         file(fastaFai)
         file(targetBED)
 
     output:
     // we have this funny *_* pattern to avoid copying the raw calls to publishdir
-        tuple val(variantCaller), val(idPatient), val(idSample), file("*_*.vcf.gz"), file("*_*.vcf.gz.tbi")
+        tuple val(idPatient), val(idSample), val(variantCaller), file("*_*.vcf.gz"), file("*_*.vcf.gz.tbi")
 
     //when: ('haplotypecaller' in tools || 'mutect2' in tools || 'freebayes' in tools)
 
@@ -300,17 +260,17 @@ process ConcatVCF {
     """
 }
 
-def groupVcfChannelsAcrossIntervalsAndMix(\
-    gvcfHaplotypeCaller,\
-    vcfGenotypeGVCFs,\
-    vcfFreebayesSingle) {
+def branchIntoGenotypingOrNoGenotypingChannels(variantSets) {
+    result = variantSets.branch {
+        genotype: params.genotypeGatkVariants
+        noGenotype: !params.genotypeGatkVariants
+    }
+    return [result.genotype, result.noGenotype]
+}
 
-    gvcfHaplotypeCallerGrouped = gvcfHaplotypeCaller.groupTuple(by:[0, 1, 2])
-    vcfGenotypeGVCFsGrouped = vcfGenotypeGVCFs.groupTuple(by:[0, 1, 2])
-    vcfFreebayesSingleGrouped = vcfFreebayesSingle.groupTuple(by: [0,1,2])
-
-    return Channel
-            .empty()
-            .mix(vcfFreebayesSingleGrouped, vcfGenotypeGVCFsGrouped, gvcfHaplotypeCallerGrouped)
-
+def removeIntervals(variantSetAndIntervalPairs) {
+    return variantSetAndIntervalPairs.map {
+        idPatient, idSample, variantCaller, intervalBed, variantSet\
+        -> [idPatient, idSample, variantCaller, variantSet]
+    }
 }

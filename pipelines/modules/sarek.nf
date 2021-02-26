@@ -815,3 +815,7 @@ def getRandomID(length) {
     String randomString = RandomStringUtils.random(randomStringLength, charset.toCharArray())
     return randomString
 }
+
+def groupByPatientSample(inputChannel) {
+    return inputChannel.groupTuple(by:[0, 1])
+}

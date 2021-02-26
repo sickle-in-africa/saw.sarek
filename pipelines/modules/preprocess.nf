@@ -11,54 +11,6 @@ tools = getInputTools(step)
 
 initializeParamsScope(step, tools)
 
-process CreateIntervalBeds {
-    tag "${intervals}"
-
-    input:
-        file(intervals)
-
-    output:
-        file '*.bed'
-
-    script:
-    // If the interval file is BED format, the fifth column is interpreted to
-    // contain runtime estimates, which is then used to combine short-running jobs
-    if (hasExtension(intervals, "bed"))
-        """
-        awk -vFS="\t" '{
-          t = \$5  # runtime estimate
-          if (t == "") {
-            # no runtime estimate in this row, assume default value
-            t = (\$3 - \$2) / ${params.nucleotides_per_second}
-          }
-          if (name == "" || (chunk > 600 && (chunk + t) > longest * 1.05)) {
-            # start a new chunk
-            name = sprintf("%s_%d-%d.bed", \$1, \$2+1, \$3)
-            chunk = 0
-            longest = 0
-          }
-          if (t > longest)
-            longest = t
-          chunk += t
-          print \$0 > name
-        }' ${intervals}
-        """
-    else if (hasExtension(intervals, "interval_list"))
-        """
-        grep -v '^@' ${intervals} | awk -vFS="\t" '{
-          name = sprintf("%s_%d-%d", \$1, \$2, \$3);
-          printf("%s\\t%d\\t%d\\n", \$1, \$2-1, \$3) > name ".bed"
-        }'
-        """
-    else
-        """
-        awk -vFS="[:-]" '{
-          name = sprintf("%s_%d-%d", \$1, \$2, \$3);
-          printf("%s\\t%d\\t%d\\n", \$1, \$2-1, \$3) > name ".bed"
-        }' ${intervals}
-        """
-}
-
 process FastQCFQ {
     label 'FastQC'
     label 'cpus_2'
@@ -275,25 +227,6 @@ process CallMolecularConsensusReads {
     -o ${idSample}_umi-consensus.bam \
     -M 1 -S Coordinate
     """
-}
-
-def addIntervalDurationsToIntervalsChannel(inputIntervalsChannel) {
-    inputIntervalsChannel.map { intervalFile ->
-            def duration = 0.0
-            for (line in intervalFile.readLines()) {
-                final fields = line.split('\t')
-                if (fields.size() >= 5) duration += fields[4].toFloat()
-                else {
-                    start = fields[1].toInteger()
-                    end = fields[2].toInteger()
-                    duration += (end - start) / params.nucleotides_per_second
-                }
-            }
-            return [duration, intervalFile]
-        }
-        .toSortedList({ a, b -> b[0] <=> a[0] })
-        .flatten().collate(2)
-        .map{duration, intervalFile -> intervalFile}
 }
 
 def branchReadGroupsIntoBamOrFastqChannels(readGroups) {

@@ -1,132 +1,193 @@
 #!/usr/bin/env nextflow
+/*
+ *  VARIANT CALLING
+ *  ===============
+ *
+ *      This script takes in *aligned sample read groups* (single files of reads
+ *      such that one read file corresponds to one and only one patient sample)
+ *      in the bam format, creates intervals (one interval per interval/bed 
+ *      file) and then calls variants in the sample read groups for a range of 
+ *      variant callers. 
+ *      
+ *      The callers are either for snvs and small indels:
+ *          + gatk 4 Haplotype caller
+ *          + strelka
+ *          + freebayes
+ *      or for structural variants:
+ *          + manta
+ *          + tiddit
+ *
+ *      Calling variants on intervals is helpful for speeding up the process, by
+ *      parralellising over each interval, however it is only possible for 
+ *      the gatk and freebayes callers. Once variant calling is done, all the 
+ *      variant sets corresponding to each sample are merged across intervals 
+ *      (where intervals were used) and the sample variant sets are output.  
+ *
+ ******************************************************************************/
+
 nextflow.enable.dsl=2
 
 include {
+    groupByPatientSample
+} from "${params.modulesDir}/sarek.nf"
+
+include {
+    GetSoftwareVersions;
     initializeInputChannelsForCalling
 } from "${params.modulesDir}/inputs.nf"
 
 include {
     GetBwaIndexes;
     GetGatkDictionary;
-    GetSamtoolsFastaIndex;
+    GetReferenceSequenceIndex;
     GetDbsnpIndex;
-    GetKnownIndelsIndex;
-    GetIntervalsList
+    GetKnownIndelsIndex
 } from "${params.modulesDir}/indices.nf"
 
 include {
-    CreateIntervalBeds;
-    addIntervalDurationsToIntervalsChannel;
-} from "${params.modulesDir}/preprocess.nf"
+    GetIntervalsPlan;
+    GetIntervals;
+    addDurationToInterval
+} from "${params.modulesDir}/intervals.nf"
 
 include {
-    GetSoftwareVersions;
-    HaplotypeCaller;
-    GenotypeGVCFs;
-    StrelkaSingle;
-    MantaSingle;
-    TIDDIT;
-    FreebayesSingle;
-    ConcatVCF;
-    groupVcfChannelsAcrossIntervalsAndMix
+    CallVariantsWithGatk;
+    GenotypeVariantsFromGatk;
+    CallVariantsWithStrelka;
+    CallVariantsWithManta;
+    CallVariantsWithTiddit;
+    CallVariantsWithFreebayes;
+    MergeVariantSetsForSample;
+    branchIntoGenotypingOrNoGenotypingChannels;
+    removeIntervals;
 } from "${params.modulesDir}/calling.nf"
 
 
 workflow {
 
-    (inputSample,\
-     _fasta_,
-     _dict_,
-     _fastaFai_,
-     _dbsnp_,
-     _intervalsList_,
-     _targetBed_,
+    (sampleReadGroups,\
+     igenomesReferenceSequenceFasta,
+     igenomesReferenceSequenceDictionary,
+     igenomesReferenceSequenceIndex,
+     dbsnp,
+     intervalsPlanFromInput,
+     targetIntervalFromInput,
      __genderMap__,
      __statusMap__)\
         = initializeInputChannelsForCalling()
 
+    softwareVersions = GetSoftwareVersions()
+
     //  get reference indexes as channels  //
     
-    ch_dict = GetGatkDictionary(_fasta_, _dict_)
+    referenceSequenceDictionary\
+        = GetGatkDictionary(\
+            igenomesReferenceSequenceFasta,\
+            igenomesReferenceSequenceDictionary)
 
-    ch_fai = GetSamtoolsFastaIndex(_fasta_, _fastaFai_)
+    referenceSequenceIndex\
+        = GetReferenceSequenceIndex(\
+            igenomesReferenceSequenceFasta,\
+            igenomesReferenceSequenceIndex)
 
-    ch_dbsnp_tbi = GetDbsnpIndex(_dbsnp_)
+    dbsnpIndex = GetDbsnpIndex(dbsnp)
 
-    ch_intervals = GetIntervalsList(ch_fai, _intervalsList_)
+   //  set up intervals for calling variants in parallel  //
 
-    ch_software_versions_yaml = GetSoftwareVersions()
+    intervalsPlan\
+        = GetIntervalsPlan(\
+            referenceSequenceIndex,\
+            intervalsPlanFromInput)
 
-   //  preprocess reads  //
+    intervals = GetIntervals(intervalsPlan).flatten()
 
-    bedIntervals = CreateIntervalBeds(ch_intervals).flatten()
+    intervalsWithDurations\
+        = addDurationToInterval(intervals)
 
-    bedIntervalsWithDurations\
-        = addIntervalDurationsToIntervalsChannel(bedIntervals)
+    sampleReadGroupAndIntervalPairs\
+        = sampleReadGroups.combine(intervalsWithDurations)
 
     //  call variants  //
 
-    inputSampleWithIntervals = inputSample.combine(bedIntervalsWithDurations)
+    variantSetAndIntervalPairsFromGatk\
+        = CallVariantsWithGatk(\
+            sampleReadGroupAndIntervalPairs,\
+            dbsnp,
+            dbsnpIndex,\
+            referenceSequenceDictionary,\
+            igenomesReferenceSequenceFasta,\
+            referenceSequenceIndex)
 
-    (gvcfHaplotypeCaller,\
-     gvcfGenotypeGVCFs)\
-        = HaplotypeCaller(\
-            inputSampleWithIntervals,\
-            _dbsnp_,
-            ch_dbsnp_tbi,\
-            ch_dict,\
-            _fasta_,\
-            ch_fai)
+    (forGenotyping,\
+     noGenotyping)\
+        = branchIntoGenotypingOrNoGenotypingChannels(\
+            variantSetAndIntervalPairsFromGatk)
 
-    (vcfGenotypeGVCFs)\
-        = GenotypeGVCFs(\
-            gvcfGenotypeGVCFs,\
-            _dbsnp_,\
-            ch_dbsnp_tbi,\
-            ch_dict,\
-            _fasta_,\
-            ch_fai)
+    (genotyped)\
+        = GenotypeVariantsFromGatk(\
+            forGenotyping,\
+            dbsnp,\
+            dbsnpIndex,\
+            referenceSequenceDictionary,\
+            igenomesReferenceSequenceFasta,\
+            referenceSequenceIndex)
 
-    (vcfStrelkaSingle)\
-        = StrelkaSingle(\
-            inputSample,\
-            _fasta_,\
-            ch_fai,\
-            _targetBed_)
+    variantSetAndIntervalPairsFromGatk\
+        = genotyped.mix(noGenotyping)
 
-    (vcfMantaSingle)\
-        = MantaSingle(\
-            inputSample,\
-            _fasta_,\
-            ch_fai,\
-            _targetBed_)
+    variantSetsFromGatk\
+        = removeIntervals(variantSetAndIntervalPairsFromGatk)    
 
-    (vcfTIDDIT,\
+    (sampleVariantSetsFromStrelka)\
+        = CallVariantsWithStrelka(\
+            sampleReadGroups,\
+            igenomesReferenceSequenceFasta,\
+            referenceSequenceIndex,\
+            targetIntervalFromInput)
+
+    (sampleVariantSetsFromManta)\
+        = CallVariantsWithManta(\
+            sampleReadGroups,\
+            igenomesReferenceSequenceFasta,\
+            referenceSequenceIndex,\
+            targetIntervalFromInput)
+
+    (sampleVariantSetsFromTiddit,\
      tidditOut)\
-        = TIDDIT(\
-            inputSample,\
-            _fasta_,\
-            ch_fai)
+        = CallVariantsWithTiddit(\
+            sampleReadGroups,\
+            igenomesReferenceSequenceFasta,\
+            referenceSequenceIndex)
 
-    (vcfFreebayesSingle)\
-        = FreebayesSingle(\
-            inputSampleWithIntervals,\
-            _fasta_,\
-            ch_software_versions_yaml)
+    (variantSetsFromFreebayes)\
+        = CallVariantsWithFreebayes(\
+            sampleReadGroupAndIntervalPairs,\
+            igenomesReferenceSequenceFasta,\
+            softwareVersions)
 
     //  concatenate variant sets across intervals  //
+    //  -- only valid for freebayes and gatk  //
 
-    groupedVcfs\
-        = groupVcfChannelsAcrossIntervalsAndMix(\
-            gvcfHaplotypeCaller,\
-            vcfGenotypeGVCFs,\
-            vcfFreebayesSingle)
+    sampleGroupsOfVariantSetsFromGatk\
+        = groupByPatientSample(variantSetsFromGatk)
+    sampleGroupsOfVariantSetsFromFreeBayes\
+        = groupByPatientSample(variantSetsFromFreebayes)
 
-    (vcfConcatenated)\
-        = ConcatVCF(\
-            groupedVcfs,\
-            ch_fai,\
-            _targetBed_)
+    sampleGroupsOfVariantSets\
+        = sampleGroupsOfVariantSetsFromGatk.mix(\
+            sampleGroupsOfVariantSetsFromFreeBayes)
+
+    sampleVariantSetsFromGatkAndFreebayes\
+        = MergeVariantSetsForSample(\
+            sampleGroupsOfVariantSets,\
+            referenceSequenceIndex,\
+            targetIntervalFromInput)
+
+    sampleVariantSets\
+        = sampleVariantSetsFromGatkAndFreebayes.mix(\
+            sampleVariantSetsFromStrelka,\
+            sampleVariantSetsFromManta,
+            sampleVariantSetsFromTiddit)
 
     /**/
 

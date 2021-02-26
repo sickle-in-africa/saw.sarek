@@ -37,7 +37,7 @@ process AlignReadsToReferenceSequence {
     """
 }
 
-process MergeReadGroupsOfEachSample {
+process MergeReadGroupsForSample {
     label 'cpus_8'
 
     tag "${idPatient}-${idSample}"
@@ -54,7 +54,7 @@ process MergeReadGroupsOfEachSample {
     """
 }
 
-process IndexBamFile {
+process GetIndexOfAlignedSampleReadGroup {
     label 'cpus_8'
 
     tag "${idPatient}-${idSample}"
@@ -69,7 +69,7 @@ process IndexBamFile {
         tuple val(idPatient), val(idSample), file("${idSample}.bam")
 
     output:
-        tuple val(idPatient), val(idSample), file("${idSample}.bam"), file("${idSample}.bam.bai")
+        tuple val(idPatient), val(idSample), file("${idSample}.bam.bai")
         tuple val(idPatient), val(idSample)
 
     when: save_bam_mapped
@@ -129,10 +129,6 @@ process MarkDuplicatesInSampleReadGroup {
     
     mv ${idSample}.md.bai ${idSample}.md.bam.bai
     """
-}
-
-def groupReadGroupsBySampleId(readGroups) {
-    return readGroups.groupTuple(by:[0, 1])
 }
 
 def branchIntoSingleOrMultipleGroupChannels(groupsOfReadGroups) {
