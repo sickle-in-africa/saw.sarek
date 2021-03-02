@@ -26,6 +26,7 @@ include {
     checkAwsBatchSettings;
     checkInputTsvPath;
     checkTrimmingAndUmiFlags;
+    checkBaseRecalibrationIsDesired;
 
     isChannelActive
 } from "${params.modulesDir}/sarek.nf"
@@ -103,9 +104,9 @@ def initializeInputChannelsForMapping() {
 
     return [\
         inputSample,\
-        _fasta_,
-        _bwa_,
-        _fastaFai_,
+        _fasta_,\
+        _bwa_,\
+        _fastaFai_,\
         __genderMap__,\
         __statusMap__]
 
@@ -149,12 +150,61 @@ def initializeInputChannelsForCalling() {
 
     return [\
         inputSample,\
-        _fasta_,
-        _dict_,
-        _fastaFai_,
-        _dbsnp_,
-        _intervalsList_,
-        _targetBed_,
+        _fasta_,\
+        _dict_,\
+        _fastaFai_,\
+        _dbsnp_,\
+        _intervalsList_,\
+        _targetBed_,\
+        __genderMap__,\
+        __statusMap__]
+
+}
+
+def initializeInputChannelsForRecalibration() {
+
+    step = 'preparerecalibration'
+    tools = getInputTools(step)
+    skipQC = getInputSkipQC()
+    annotate_tools = getInputListOfAnnotationTools()
+    tsvPath = getInputTsvPath(step)
+
+    initializeParamsScope(step, tools)
+
+    checkHostname()
+    checkInputReferenceGenomeExists()
+    checkInputStepIsValid(step)
+    checkInputToolsExist(tools)
+    checkInputSkippedQCToolsExist(skipQC)
+    checkInputListOfAnnotationToolsValid(annotate_tools)
+    checkInputAscatParametersValid()
+    checkInputReadStructureParametersValid()
+    checkAwsBatchSettings()
+    checkInputTsvPath(tsvPath)
+
+    checkBaseRecalibrationIsDesired()
+
+    // Initialize channels with files based on params
+    _fasta_ = params.fasta ? Channel.value(file(params.fasta)) : getInactiveChannel()
+    _dict_ = params.dict ? Channel.value(file(params.dict)) : getInactiveChannel()
+    _fastaFai_ = params.fasta_fai ? Channel.value(file(params.fasta_fai)) : getInactiveChannel()
+    _dbsnp_ = params.dbsnp ? Channel.value(file(params.dbsnp)) : getInactiveChannel()
+    _knownIndels_ = params.known_indels ? Channel.value(file(params.known_indels)) : getInactiveChannel()
+    _intervalsList_ = params.intervals ? Channel.value(file(params.intervals)) : getInactiveChannel()
+    _known_indels_ = params.known_indels ? Channel.value(file(params.known_indels)) : getInactiveChannel()
+
+    inputSample = getInputSampleListAsChannel(tsvPath, step)
+
+    (__genderMap__, __statusMap__, inputSample) = extractInfos(inputSample)
+
+    return [\
+        inputSample,\
+        _fasta_,\
+        _dict_,\
+        _fastaFai_,\
+        _dbsnp_,\
+        _intervalsList_,\
+        _known_indels_,\
         __genderMap__,\
         __statusMap__]
 

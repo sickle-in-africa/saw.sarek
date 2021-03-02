@@ -336,7 +336,7 @@ def getTsvPathFromOutputOfPreviousStep(currentStep) {
           case 'preparerecalibration': return "${params.outdir}/Preprocessing/TSV/duplicates_marked_no_table.tsv"; break
           case 'recalibrate': return "${params.outdir}/Preprocessing/TSV/duplicates_marked.tsv"; break
           case 'variantcalling': 
-            if (!params.genomes[params.genome].dbsnp && !params.genomes[params.genome].known_indels) {
+            if (params.skip_baserecalibration == true) {
               return "${params.outdir}/Preprocessing/TSV/duplicates_marked_no_table.tsv"
             }
             else {
@@ -418,6 +418,10 @@ def checkInputTsvPath(inputTsvPath) {
   if ( hasExtension(inputTsvPath, "vcf") || hasExtension(inputTsvPath, "vcf.gz") ) exit 1, "you have specified a vcf input instead of tsv. That was perhaps meant for the annotation step."
 }
 
+def checkBaseRecalibrationIsDesired() {
+    if ( params.skip_baserecalibration == true ) exit 1, "you have already asked to skip recalibration in your nextflow config file. Set 'params.skip_baserecalibration = false' if you want to go ahead."
+}
+
 def checkTrimmingAndUmiFlags(trimmingStatus, umiStatus) {
   if (trimmingStatus && umiStatus) exit 1, "trimming and umi processing cannot be applied at the same time. Chose only one, or neither."
 } 
@@ -426,8 +430,6 @@ def isInputTsvFileSpecified() {
   if (params.input) return true
   else return false
 }
-
-
 
 def printHelpMessageAndExitIfUserAsks() {
   if (params.help == true) exit 0, helpMessage()
@@ -798,11 +800,11 @@ def printMutec2Warning(inputToolsList) {
 }
 
 def getInactiveChannel() {
-    return Channel.value(file('NULL'))
+    return Channel.value(file(getInactiveChannelFlag()))
 }
 
 def isChannelActive(inputChannel) {
-    return ( !('NULL' =~ inputChannel) )
+    return ( !(inputChannel =~ /NULL/) )
 }
 
 def getInactiveChannelFlag() {

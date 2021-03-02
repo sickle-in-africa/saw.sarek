@@ -1,8 +1,6 @@
 #!/usr/bin/env nextflow
 
-printHelpMessageAndExitIfUserAsks()
-
-step = 'variantcalling'
+step = 'preparerecalibration'
 tools = getInputTools()
 skipQC = getInputSkipQC()
 annotate_tools = getInputListOfAnnotationTools()
@@ -11,8 +9,6 @@ save_bam_mapped = getSavedBamMapped()
 tsvPath = getInputTsvPath(step)
 
 initializeParamsObject(step, tools)
-
-summaryMap = getSummaryMapFromParamsObjectAndArgs(step, custom_runName, skipQC, tools)
 
 checkHostname()
 checkInputReferenceGenomeExists()
@@ -25,18 +21,18 @@ checkInputReadStructureParametersValid()
 checkAwsBatchSettings()
 checkInputTsvPath(tsvPath)
 
-printNfcoreSarekWelcomeGraphic()
-printSummaryMessage(summaryMap)
-printMutec2Warning(tools)
 
 ch_multiqc_config = getMultiqcConfigFile()
 ch_multiqc_custom_config = getMultiqcCustomConfigFileAsChannel()
 ch_output_docs = getOutputDocsFile()
 ch_output_docs_images = getOutputDocsImagesFile()
 
-inputSample = getInputSampleListAsChannel(tsvPath)
+inputSample = getInputSampleListAsChannel(tsvPath, step)
 
 (genderMap, statusMap, inputSample) = extractInfos(inputSample)
+
+
+inputSample = inputSample.dump(tag: 'input sample')
 
 
 // Initialize channels with files based on params
@@ -69,80 +65,6 @@ ch_target_bed = params.target_bed ? Channel.value(file(params.target_bed)) : "nu
 // Optional values, not defined within the params.genomes[params.genome] scope
 ch_read_structure1 = params.read_structure1 ? Channel.value(params.read_structure1) : "null"
 ch_read_structure2 = params.read_structure2 ? Channel.value(params.read_structure2) : "null"
-
-
-// Parse software version numbers
-
-process get_software_versions {
-    publishDir "${params.outdir}/pipeline_info", mode: params.publish_dir_mode,
-        saveAs: {it.indexOf(".csv") > 0 ? it : null}
-
-    output:
-        file 'software_versions_mqc.yaml' into ch_software_versions_yaml
-        file "software_versions.csv"
-
-    when: !('versions' in skipQC)
-
-    script:
-    aligner = params.aligner == "bwa-mem2" ? "bwa-mem2" : "bwa"
-    """
-    alleleCounter --version &> v_allelecount.txt 2>&1 || true
-    bcftools --version &> v_bcftools.txt 2>&1 || true
-    ${aligner} version &> v_bwa.txt 2>&1 || true
-    cnvkit.py version &> v_cnvkit.txt 2>&1 || true
-    configManta.py --version &> v_manta.txt 2>&1 || true
-    configureStrelkaGermlineWorkflow.py --version &> v_strelka.txt 2>&1 || true
-    echo "${workflow.manifest.version}" &> v_pipeline.txt 2>&1 || true
-    echo "${workflow.nextflow.version}" &> v_nextflow.txt 2>&1 || true
-    snpEff -version &> v_snpeff.txt 2>&1 || true
-    fastqc --version &> v_fastqc.txt 2>&1 || true
-    freebayes --version &> v_freebayes.txt 2>&1 || true
-    freec &> v_controlfreec.txt 2>&1 || true
-    gatk ApplyBQSR --help &> v_gatk.txt 2>&1 || true
-    msisensor &> v_msisensor.txt 2>&1 || true
-    multiqc --version &> v_multiqc.txt 2>&1 || true
-    qualimap --version &> v_qualimap.txt 2>&1 || true
-    R --version &> v_r.txt 2>&1 || true
-    R -e "library(ASCAT); help(package='ASCAT')" &> v_ascat.txt 2>&1 || true
-    samtools --version &> v_samtools.txt 2>&1 || true
-    tiddit &> v_tiddit.txt 2>&1 || true
-    trim_galore -v &> v_trim_galore.txt 2>&1 || true
-    vcftools --version &> v_vcftools.txt 2>&1 || true
-    vep --help &> v_vep.txt 2>&1 || true
-
-    ${params.sarekDir}/bin/scrape_software_versions.py &> software_versions_mqc.yaml
-    """
-}
-
-ch_software_versions_yaml = ch_software_versions_yaml.dump(tag:'SOFTWARE VERSIONS')
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 /*
@@ -333,33 +255,6 @@ process BuildIntervals {
 
 ch_intervals = params.no_intervals ? "null" : params.intervals && !('annotate' in step) ? Channel.value(file(params.intervals)) : intervalBuilt
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 /*
 ================================================================================
                                   PREPROCESSING
@@ -446,304 +341,174 @@ if (params.no_intervals && step != 'annotate') {
 
 
 
+bam_duplicates_marked = inputSample
+
+bam_duplicates_marked = bam_duplicates_marked.dump(tag:'MD BAM')
+
+if (params.skip_markduplicates) bam_duplicates_marked = bam_mapped_merged_indexed
+
+(bamMD, bamMDToJoin, bam_duplicates_marked) = bam_duplicates_marked.into(3)
+
+bamBaseRecalibrator = bamMD.combine(intBaseRecalibrator)
+
+bamBaseRecalibrator = bamBaseRecalibrator.dump(tag:'BAM FOR BASERECALIBRATOR')
 
 
 
 
+// STEP 3: CREATING RECALIBRATION TABLES
 
+process BaseRecalibrator {
+    label 'cpus_1'
 
+    tag "${idPatient}-${idSample}-${intervalBed.baseName}"
 
+    input:
+        set idPatient, idSample, file(bam), file(bai), file(intervalBed) from bamBaseRecalibrator
+        file(dbsnp) from ch_dbsnp
+        file(dbsnpIndex) from ch_dbsnp_tbi
+        file(fasta) from ch_fasta
+        file(dict) from ch_dict
+        file(fastaFai) from ch_fai
+        file(knownIndels) from ch_known_indels
+        file(knownIndelsIndex) from ch_known_indels_tbi
 
+    output:
+        set idPatient, idSample, file("${prefix}${idSample}.recal.table") into tableGatherBQSRReports
+        set idPatient, idSample into recalTableTSVnoInt
 
+    when: params.known_indels
 
+    script:
+    dbsnpOptions = params.dbsnp ? "--known-sites ${dbsnp}" : ""
+    knownOptions = params.known_indels ? knownIndels.collect{"--known-sites ${it}"}.join(' ') : ""
+    prefix = params.no_intervals ? "" : "${intervalBed.baseName}_"
+    intervalsOptions = params.no_intervals ? "" : "-L ${intervalBed}"
+    // TODO: --use-original-qualities ???
+    """
+    gatk --java-options -Xmx${task.memory.toGiga()}g \
+        BaseRecalibrator \
+        -I ${bam} \
+        -O ${prefix}${idSample}.recal.table \
+        --tmp-dir . \
+        -R ${fasta} \
+        ${intervalsOptions} \
+        ${dbsnpOptions} \
+        ${knownOptions} \
+        --verbosity INFO
+    """
+}
 
+if (!params.no_intervals) tableGatherBQSRReports = tableGatherBQSRReports.groupTuple(by:[0, 1])
 
+tableGatherBQSRReports = tableGatherBQSRReports.dump(tag:'BQSR REPORTS')
 
+if (params.no_intervals) {
+    (tableGatherBQSRReports, tableGatherBQSRReportsNoInt) = tableGatherBQSRReports.into(2)
+    recalTable = tableGatherBQSRReportsNoInt
+} else recalTableTSVnoInt.close()
 
+// STEP 3.5: MERGING RECALIBRATION TABLES
 
-/*
-================================================================================
-                            GERMLINE VARIANT CALLING
-================================================================================
-*/
-
-
-
-
-// When starting with variant calling, Channel bam_recalibrated is inputSample
-if (step == 'variantcalling') bam_recalibrated = inputSample
-
-bam_recalibrated = bam_recalibrated.dump(tag:'BAM for Variant Calling')
-
-// Here we have a recalibrated bam set
-// The TSV file is formatted like: "idPatient status idSample bamFile baiFile"
-// Manta will be run in Germline mode, or in Tumor mode depending on status
-// HaplotypeCaller, TIDDIT and Strelka will be run for Normal and Tumor samples
-
-(bamMantaSingle, bamStrelkaSingle, bamTIDDIT, bamFreebayesSingleNoIntervals, bamHaplotypeCallerNoIntervals, bamRecalAll) = bam_recalibrated.into(6)
-
-
-// To speed Variant Callers up we are chopping the reference into smaller pieces
-// Do variant calling by this intervals, and re-merge the VCFs
-
-bamHaplotypeCaller = bamHaplotypeCallerNoIntervals.combine(intHaplotypeCaller)
-bamFreebayesSingle = bamFreebayesSingleNoIntervals.combine(intFreebayesSingle)
-
-
-// STEP GATK HAPLOTYPECALLER.1
-
-process HaplotypeCaller {
-    label 'memory_singleCPU_task_sq'
+process GatherBQSRReports {
+    label 'memory_singleCPU_2_task'
     label 'cpus_2'
 
-    tag "${idSample}-${intervalBed.baseName}"
-
-    input:
-        set idPatient, idSample, file(bam), file(bai), file(intervalBed) from bamHaplotypeCaller
-        //file(dbsnp) from ch_dbsnp
-        //file(dbsnpIndex) from ch_dbsnp_tbi
-        file(dict) from ch_dict
-        file(fasta) from ch_fasta
-        file(fastaFai) from ch_fai
-
-    output:
-        set val("HaplotypeCallerGVCF"), idPatient, idSample, file("${intervalBed.baseName}_${idSample}.g.vcf") into gvcfHaplotypeCaller
-        set idPatient, idSample, file(intervalBed), file("${intervalBed.baseName}_${idSample}.g.vcf") into gvcfGenotypeGVCFs
-
-    //when: 'haplotypecaller' in tools
-
-    script:
-    //javaOptions = "-Xmx${task.memory.toGiga()}g -Xms6000m -XX:GCTimeLimit=50 -XX:GCHeapFreeLimit=10"
-    javaOptions = ""
-    intervalsOptions = params.no_intervals ? "" : "-L ${intervalBed}"
-    dbsnpOptions = "" //params.dbsnp ? "--D ${dbsnp}" : ""
-    """
-    gatk --java-options "${javaOptions}" \
-        HaplotypeCaller \
-        -R ${fasta} \
-        -I ${bam} \
-        ${intervalsOptions} \
-        ${dbsnpOptions} \
-        -O ${intervalBed.baseName}_${idSample}.g.vcf \
-        -ERC GVCF
-    """
-}
-
-gvcfHaplotypeCaller = gvcfHaplotypeCaller.groupTuple(by:[0, 1, 2])
-
-if (!params.generate_gvcf) gvcfHaplotypeCaller.close()
-else gvcfHaplotypeCaller = gvcfHaplotypeCaller.dump(tag:'GVCF HaplotypeCaller')
-
-// STEP GATK HAPLOTYPECALLER.2
-
-process GenotypeGVCFs {
-    tag "${idSample}-${intervalBed.baseName}"
-
-    input:
-        set idPatient, idSample, file(intervalBed), file(gvcf) from gvcfGenotypeGVCFs
-        //file(dbsnp) from ch_dbsnp
-        //file(dbsnpIndex) from ch_dbsnp_tbi
-        file(dict) from ch_dict
-        file(fasta) from ch_fasta
-        file(fastaFai) from ch_fai
-
-    output:
-    set val("HaplotypeCaller"), idPatient, idSample, file("${intervalBed.baseName}_${idSample}.vcf") into vcfGenotypeGVCFs
-
-    //when: 'haplotypecaller' in tools
-
-    script:
-    // Using -L is important for speed and we have to index the interval files also
-    intervalsOptions = params.no_intervals ? "" : "-L ${intervalBed}"
-    dbsnpOptions = params.dbsnp ? "--D ${dbsnp}" : ""
-    """
-    gatk --java-options -Xmx${task.memory.toGiga()}g \
-        IndexFeatureFile \
-        -I ${gvcf}
-
-    gatk --java-options -Xmx${task.memory.toGiga()}g \
-        GenotypeGVCFs \
-        -R ${fasta} \
-        ${intervalsOptions} \
-        ${dbsnpOptions} \
-        -V ${gvcf} \
-        -O ${intervalBed.baseName}_${idSample}.vcf
-    """
-}
-
-vcfGenotypeGVCFs = vcfGenotypeGVCFs.groupTuple(by:[0, 1, 2])
-
-
-
-// STEP STRELKA.1 - SINGLE MODE
-
-process StrelkaSingle {
-    label 'cpus_max'
-    label 'memory_max'
-
-    tag "${idSample}"
-
-    publishDir "${params.outdir}/VariantCalling/${idSample}/Strelka", mode: params.publish_dir_mode
-
-    input:
-        set idPatient, idSample, file(bam), file(bai) from bamStrelkaSingle
-        file(fasta) from ch_fasta
-        file(fastaFai) from ch_fai
-        file(targetBED) from ch_target_bed
-
-    output:
-        set val("Strelka"), idPatient, idSample, file("*.vcf.gz"), file("*.vcf.gz.tbi") into vcfStrelkaSingle
-
-    //when: 'strelka' in tools
-
-    script:
-    beforeScript = params.target_bed ? "bgzip --threads ${task.cpus} -c ${targetBED} > call_targets.bed.gz ; tabix call_targets.bed.gz" : ""
-    options = params.target_bed ? "--exome --callRegions call_targets.bed.gz" : ""
-    """
-    ${beforeScript}
-    configureStrelkaGermlineWorkflow.py \
-        --bam ${bam} \
-        --referenceFasta ${fasta} \
-        ${options} \
-        --runDir Strelka
-
-    python Strelka/runWorkflow.py -m local -j ${task.cpus}
-
-    mv Strelka/results/variants/genome.*.vcf.gz \
-        Strelka_${idSample}_genome.vcf.gz
-    mv Strelka/results/variants/genome.*.vcf.gz.tbi \
-        Strelka_${idSample}_genome.vcf.gz.tbi
-    mv Strelka/results/variants/variants.vcf.gz \
-        Strelka_${idSample}_variants.vcf.gz
-    mv Strelka/results/variants/variants.vcf.gz.tbi \
-        Strelka_${idSample}_variants.vcf.gz.tbi
-    """
-}
-
-vcfStrelkaSingle = vcfStrelkaSingle.dump(tag:'Strelka - Single Mode')
-
-// STEP MANTA.1 - SINGLE MODE
-
-process MantaSingle {
-    label 'cpus_max'
-    label 'memory_max'
-
-    tag "${idSample}"
-
-    publishDir "${params.outdir}/VariantCalling/${idSample}/Manta", mode: params.publish_dir_mode
-
-    input:
-        set idPatient, idSample, file(bam), file(bai) from bamMantaSingle
-        file(fasta) from ch_fasta
-        file(fastaFai) from ch_fai
-        file(targetBED) from ch_target_bed
-
-    output:
-        set val("Manta"), idPatient, idSample, file("*.vcf.gz"), file("*.vcf.gz.tbi") into vcfMantaSingle
-
-    //when: 'manta' in tools
-
-    script:
-    beforeScript = params.target_bed ? "bgzip --threads ${task.cpus} -c ${targetBED} > call_targets.bed.gz ; tabix call_targets.bed.gz" : ""
-    options = params.target_bed ? "--exome --callRegions call_targets.bed.gz" : ""
-    status = statusMap[idPatient, idSample]
-    inputbam = status == 0 ? "--bam" : "--tumorBam"
-    vcftype = status == 0 ? "diploid" : "tumor"
-    """
-    ${beforeScript}
-    configManta.py \
-        ${inputbam} ${bam} \
-        --reference ${fasta} \
-        ${options} \
-        --runDir Manta
-
-    python Manta/runWorkflow.py -m local -j ${task.cpus}
-
-    mv Manta/results/variants/candidateSmallIndels.vcf.gz \
-        Manta_${idSample}.candidateSmallIndels.vcf.gz
-    mv Manta/results/variants/candidateSmallIndels.vcf.gz.tbi \
-        Manta_${idSample}.candidateSmallIndels.vcf.gz.tbi
-    mv Manta/results/variants/candidateSV.vcf.gz \
-        Manta_${idSample}.candidateSV.vcf.gz
-    mv Manta/results/variants/candidateSV.vcf.gz.tbi \
-        Manta_${idSample}.candidateSV.vcf.gz.tbi
-    mv Manta/results/variants/${vcftype}SV.vcf.gz \
-        Manta_${idSample}.${vcftype}SV.vcf.gz
-    mv Manta/results/variants/${vcftype}SV.vcf.gz.tbi \
-        Manta_${idSample}.${vcftype}SV.vcf.gz.tbi
-    """
-}
-
-vcfMantaSingle = vcfMantaSingle.dump(tag:'Single Manta')
-
-// STEP TIDDIT
-
-process TIDDIT {
-    tag "${idSample}"
+    tag "${idPatient}-${idSample}"
 
     publishDir params.outdir, mode: params.publish_dir_mode,
         saveAs: {
-            if (it == "TIDDIT_${idSample}.vcf") "VariantCalling/${idSample}/TIDDIT/${it}"
-            else "Reports/${idSample}/TIDDIT/${it}"
+            if (it == "${idSample}.recal.table" && !params.skip_markduplicates) "Preprocessing/${idSample}/DuplicatesMarked/${it}"
+            else "Preprocessing/${idSample}/Mapped/${it}"
         }
 
     input:
-        set idPatient, idSample, file(bam), file(bai) from bamTIDDIT
-        file(fasta) from ch_fasta
-        file(fastaFai) from ch_fai
+        set idPatient, idSample, file(recal) from tableGatherBQSRReports
 
     output:
-        set val("TIDDIT"), idPatient, idSample, file("*.vcf.gz"), file("*.tbi") into vcfTIDDIT
-        set file("TIDDIT_${idSample}.old.vcf"), file("TIDDIT_${idSample}.ploidy.tab"), file("TIDDIT_${idSample}.signals.tab"), file("TIDDIT_${idSample}.wig"), file("TIDDIT_${idSample}.gc.wig") into tidditOut
+        set idPatient, idSample, file("${idSample}.recal.table") into recalTable
+        file("${idSample}.recal.table") into baseRecalibratorReport
+        set idPatient, idSample into recalTableTSV
 
-    //when: 'tiddit' in tools
+    when: !(params.no_intervals)
 
     script:
+    input = recal.collect{"-I ${it}"}.join(' ')
     """
-    tiddit --sv -o TIDDIT_${idSample} --bam ${bam} --ref ${fasta}
-
-    mv TIDDIT_${idSample}.vcf TIDDIT_${idSample}.old.vcf
-
-    grep -E "#|PASS" TIDDIT_${idSample}.old.vcf > TIDDIT_${idSample}.vcf
-
-    bgzip --threads ${task.cpus} -c TIDDIT_${idSample}.vcf > TIDDIT_${idSample}.vcf.gz
-
-    tabix TIDDIT_${idSample}.vcf.gz
+    gatk --java-options -Xmx${task.memory.toGiga()}g \
+        GatherBQSRReports \
+        ${input} \
+        -O ${idSample}.recal.table \
     """
 }
 
-vcfTIDDIT = vcfTIDDIT.dump(tag:'TIDDIT')
+if ('baserecalibrator' in skipQC) baseRecalibratorReport.close()
 
-// STEP FREEBAYES SINGLE MODE
+recalTable = recalTable.dump(tag:'RECAL TABLE')
 
-process FreebayesSingle {
-    tag "${idSample}-${intervalBed.baseName}"
+(recalTableTSV, recalTableSampleTSV) = recalTableTSV.mix(recalTableTSVnoInt).into(2)
 
-    label 'cpus_1'
-    
-    input:
-        set idPatient, idSample, file(bam), file(bai), file(intervalBed) from bamFreebayesSingle
-        file(fasta) from ch_fasta
-        file(fastaFai) from ch_software_versions_yaml
-    
-    output:
-        set val("FreeBayes"), idPatient, idSample, file("${intervalBed.baseName}_${idSample}.vcf") into vcfFreebayesSingle
-    
-    //when: 'freebayes' in tools
+// Create TSV files to restart from this step
+if (params.skip_markduplicates) {
+    recalTableTSV.map { idPatient, idSample ->
+        status = statusMap[idPatient, idSample]
+        gender = genderMap[idPatient]
+        bam = "${params.outdir}/Preprocessing/${idSample}/Mapped/${idSample}.bam"
+        bai = "${params.outdir}/Preprocessing/${idSample}/Mapped/${idSample}.bam.bai"
+        recalTable = "${params.outdir}/Preprocessing/${idSample}/Mapped/${idSample}.recal.table"
+        "${idPatient}\t${gender}\t${status}\t${idSample}\t${bam}\t${bai}\t${recalTable}\n"
+    }.collectFile(
+        name: 'mapped_no_duplicates_marked.tsv', sort: true, storeDir: "${params.outdir}/Preprocessing/TSV"
+    )
 
-    script:
-    intervalsOptions = params.no_intervals ? "" : "-t ${intervalBed}"
-    """
-    freebayes \
-        -f ${fasta} \
-        --min-alternate-fraction 0.1 \
-        --min-mapping-quality 1 \
-        ${intervalsOptions} \
-        ${bam} > ${intervalBed.baseName}_${idSample}.vcf
-    """
+    recalTableSampleTSV
+        .collectFile(storeDir: "${params.outdir}/Preprocessing/TSV/") {
+            idPatient, idSample ->
+            status = statusMap[idPatient, idSample]
+            gender = genderMap[idPatient]
+            bam = "${params.outdir}/Preprocessing/${idSample}/Mapped/${idSample}.bam"
+            bai = "${params.outdir}/Preprocessing/${idSample}/Mapped/${idSample}.bam.bai"
+            recalTable = "${params.outdir}/Preprocessing/${idSample}/Mapped/${idSample}.recal.table"
+            ["mapped_no_duplicates_marked_${idSample}.tsv", "${idPatient}\t${gender}\t${status}\t${idSample}\t${bam}\t${bai}\t${recalTable}\n"]
+    }
+} else {
+    recalTableTSV.map { idPatient, idSample ->
+    status = statusMap[idPatient, idSample]
+    gender = genderMap[idPatient]
+    bam = "${params.outdir}/Preprocessing/${idSample}/DuplicatesMarked/${idSample}.md.bam"
+    bai = "${params.outdir}/Preprocessing/${idSample}/DuplicatesMarked/${idSample}.md.bam.bai"
+    recalTable = "${params.outdir}/Preprocessing/${idSample}/DuplicatesMarked/${idSample}.recal.table"
+
+        "${idPatient}\t${gender}\t${status}\t${idSample}\t${bam}\t${bai}\t${recalTable}\n"
+    }.collectFile(
+        name: 'duplicates_marked.tsv', sort: true, storeDir: "${params.outdir}/Preprocessing/TSV"
+    )
+
+    recalTableSampleTSV
+        .collectFile(storeDir: "${params.outdir}/Preprocessing/TSV/") {
+            idPatient, idSample ->
+            status = statusMap[idPatient, idSample]
+            gender = genderMap[idPatient]
+            bam = "${params.outdir}/Preprocessing/${idSample}/DuplicatesMarked/${idSample}.md.bam"
+            bai = "${params.outdir}/Preprocessing/${idSample}/DuplicatesMarked/${idSample}.md.bam.bai"
+            recalTable = "${params.outdir}/Preprocessing/${idSample}/DuplicatesMarked/${idSample}.recal.table"
+            ["duplicates_marked_${idSample}.tsv", "${idPatient}\t${gender}\t${status}\t${idSample}\t${bam}\t${bai}\t${recalTable}\n"]
+    }
 }
 
-vcfFreebayesSingle = vcfFreebayesSingle.groupTuple(by: [0,1,2])
+bamApplyBQSR = bamMDToJoin.join(recalTable, by:[0,1])
+
+
+
+
+
+if (step == 'recalibrate') bamApplyBQSR = inputSample
+
+bamApplyBQSR = bamApplyBQSR.dump(tag:'BAM + BAI + RECAL TABLE')
+
+bamApplyBQSR = bamApplyBQSR.combine(intApplyBQSR)
+
+bamApplyBQSR = bamApplyBQSR.dump(tag:'BAM + BAI + RECAL TABLE + INT')
 
 
 
@@ -765,44 +530,28 @@ vcfFreebayesSingle = vcfFreebayesSingle.groupTuple(by: [0,1,2])
 
 
 
-vcfConcatenateVCFs = Channel.empty().mix(vcfFreebayesSingle, vcfGenotypeGVCFs, gvcfHaplotypeCaller)
 
-//vcfConcatenateVCFs = Channel.empty().mix(vcfGenotypeGVCFs, gvcfHaplotypeCaller)
 
-vcfConcatenateVCFs = vcfConcatenateVCFs.dump(tag:'VCF to merge')
 
-process ConcatVCF {
-    label 'concat_vcf'
-    label 'cpus_8'
 
-    tag "${variantCaller}-${idSample}"
 
-    publishDir "${params.outdir}/VariantCalling/${idSample}/${"$variantCaller"}", mode: params.publish_dir_mode
 
-    input:
-        set variantCaller, idPatient, idSample, file(vcf) from vcfConcatenateVCFs
-        file(fastaFai) from ch_fai
-        file(targetBED) from ch_target_bed
 
-    output:
-    // we have this funny *_* pattern to avoid copying the raw calls to publishdir
-        set variantCaller, idPatient, idSample, file("*_*.vcf.gz"), file("*_*.vcf.gz.tbi") into vcfConcatenated
 
-    //when: ('haplotypecaller' in tools || 'mutect2' in tools || 'freebayes' in tools)
 
-    script:
-    if (variantCaller == 'HaplotypeCallerGVCF')
-        outputFile = "HaplotypeCaller_${idSample}.g.vcf"
-    else
-        outputFile = "${variantCaller}_${idSample}.vcf"
-    options = params.target_bed ? "-t ${targetBED}" : ""
-    intervalsOptions = params.no_intervals ? "-n" : ""
-    """
-    ${params.sarekDir}/bin/concatenateVCFs.sh -i ${fastaFai} -c ${task.cpus} -o ${outputFile} ${options} ${intervalsOptions}
-    """
-}
 
-vcfConcatenated = vcfConcatenated.dump(tag:'VCF')
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -1169,8 +918,8 @@ def returnStatus(it) {
 def getInputStep() {
     return params.step ? params.step.toLowerCase().replaceAll('-', '').replaceAll('_', '') : ''
 }
-def getInputTools() {
-    if (step == 'controlfreec') {
+def getInputTools(inputStep) {
+    if (inputStep == 'controlfreec') {
         return ['controlfreec']
     } else {
       return params.tools ? params.tools.split(',').collect{it.trim().toLowerCase().replaceAll('-', '').replaceAll('_', '')} : []
@@ -1203,13 +952,13 @@ def getOutputDocsImagesFile(){
 def getSavedBamMapped() {
   params.skip_markduplicates ? true : params.save_bam_mapped ? true : false
 }
-def getInputTsvPath() {
+def getInputTsvPath(step) {
 
   if ( isInputTsvFileSpecified() ) {
     return getTsvPathFromUserInput()
   }
   else {
-    return getTsvPathFromOutputOfPreviousStep()
+    return getTsvPathFromOutputOfPreviousStep(step)
     // only for steps:
     //    + preparerecalibration
     //    + recalibrate
@@ -1220,38 +969,39 @@ def getInputTsvPath() {
 def getTsvPathFromUserInput() {
   return params.input
 }
-def getTsvPathFromOutputOfPreviousStep() {
+def getTsvPathFromOutputOfPreviousStep(currentStep) {
   if (!params.skip_markduplicates) {
-      switch (step) {
+      switch (currentStep) {
           case 'mapping': break
           case 'preparerecalibration': return "${params.outdir}/Preprocessing/TSV/duplicates_marked_no_table.tsv"; break
           case 'recalibrate': return "${params.outdir}/Preprocessing/TSV/duplicates_marked.tsv"; break
-          case 'variantcalling':
-            if ( params.skip_recalibration == false ) {
-                return "${params.outdir}/Preprocessing/TSV/recalibrated.tsv"
-            } else {
-                return "${params.outdir}/Preprocessing/TSV/duplicates_marked_no_table.tsv"
+          case 'variantcalling': 
+            if (!params.genomes[params.genome].dbsnp && !params.genomes[params.genome].known_indels) {
+              return "${params.outdir}/Preprocessing/TSV/duplicates_marked_no_table.tsv"
+            }
+            else {
+              return "${params.outdir}/Preprocessing/TSV/recalibrated.tsv"
             }
             break
           case 'controlfreec': return "${params.outdir}/VariantCalling/TSV/control-freec_mpileup.tsv"; break
           case 'annotate': break
-          default: exit 1, "Unknown step ${step}"
+          default: exit 1, "Unknown step ${currentStep}"
       }
   } else if (params.skip_markduplicates) {
-      switch (step) {
+      switch (currentStep) {
           case 'mapping': break
           case 'preparerecalibration': return "${params.outdir}/Preprocessing/TSV/mapped.tsv"; break
           case 'recalibrate': return "${params.outdir}/Preprocessing/TSV/mapped_no_duplicates_marked.tsv"; break
           case 'variantcalling': return "${params.outdir}/Preprocessing/TSV/recalibrated.tsv"; break
           case 'controlfreec': return"${params.outdir}/VariantCalling/TSV/control-freec_mpileup.tsv"; break
           case 'annotate': break
-          default: exit 1, "Unknown step ${step}"
+          default: exit 1, "Unknown step ${currentStep}"
       }
   } 
 }
-def getInputSampleListAsChannel(inputTsvPath) {
+def getInputSampleListAsChannel(inputTsvPath, inputStep) {
   tsvFile = file(inputTsvPath)
-  switch (step) {
+  switch (inputStep) {
       case 'mapping': return extractFastq(tsvFile)
       case 'preparerecalibration': return extractBam(tsvFile)
       case 'recalibrate': return extractRecal(tsvFile)
@@ -1284,7 +1034,7 @@ def checkInputSkippedQCToolsExist(inputSkipQC) {
 }
 def checkInputListOfAnnotationToolsValid(inputAnnotationTools) {
   annoList = defineAnnoList()
-  if (!checkParameterList(annotate_tools,annoList)) exit 1, 'Unknown tool(s) to annotate, see --help for more information'
+  if (!checkParameterList(inputAnnotationTools,annoList)) exit 1, 'Unknown tool(s) to annotate, see --help for more information'
 }
 def checkInputAscatParametersValid() {
   if ((params.ascat_ploidy && !params.ascat_purity) || (!params.ascat_ploidy && params.ascat_purity)) exit 1, 'Please specify both --ascat_purity and --ascat_ploidy, or none of them'
@@ -1308,329 +1058,13 @@ def checkInputTsvPath(inputTsvPath) {
   if ( hasExtension(inputTsvPath, "vcf") || hasExtension(inputTsvPath, "vcf.gz") ) exit 1, "you have specified a vcf input instead of tsv. That was perhaps meant for the annotation step."
 }
 
+def checkTrimmingAndUmiFlags(trimmingStatus, umiStatus) {
+  if (trimmingStatus && umiStatus) exit 1, "trimming and umi processing cannot be applied at the same time. Chose only one, or neither."
+} 
+
 def isInputTsvFileSpecified() {
   if (params.input) return true
   else return false
-}
-
-def printHelpMessageAndExitIfUserAsks() {
-  if (params.help == true) exit 0, helpMessage()
-}
-
-def helpMessage() {
-    log.info nfcoreHeader()
-    log.info"""
-
-    Usage:
-
-    The typical command for running the pipeline is as follows:
-
-    nextflow run nf-core/sarek --input sample.tsv -profile docker
-
-    Mandatory arguments:
-      --input                      [file] Path to input TSV file on mapping, prepare_recalibration, recalibrate, variant_calling and Control-FREEC steps
-                                          Multiple TSV files can be specified surrounded with quotes
-                                          Works also with the path to a directory on mapping step with a single germline sample only
-                                          Alternatively, path to VCF input file on annotate step
-                                          Multiple VCF files can be specified surrounded with quotes
-      -profile                      [str] Configuration profile to use. Can use multiple (comma separated)
-                                          Available: conda, docker, singularity, test, awsbatch, <institute> and more
-      --step                       [list] Specify starting step (only one)
-                                          Available: mapping, prepare_recalibration, recalibrate, variant_calling, annotate, ControlFREEC
-                                          Default: ${params.step}
-      --genome                      [str] Name of iGenomes reference
-                                          Default: ${params.genome}
-
-    Main options:
-      --help                       [bool] You're reading it
-      --no_intervals               [bool] Disable usage of intervals
-                                          Intervals are part of the genome chopped up, used to speed up preprocessing and variant calling
-      --nucleotides_per_second      [int] To estimate interval size
-                                          Default: ${params.nucleotides_per_second}
-      --sentieon                   [bool] If sentieon is available, will enable it for Preprocessing, and Variant Calling
-                                          Adds the following options for --tools: DNAseq, DNAscope and TNscope
-      --skip_qc                     [str] Specify which QC tools to skip when running Sarek (multiple separated with commas)
-                                          Available: all, bamQC, BaseRecalibrator, BCFtools, Documentation
-                                          FastQC, MultiQC, samtools, vcftools, versions
-                                          Default: None
-      --target_bed                 [file] Target BED file for whole exome or targeted sequencing
-                                          Default: None
-      --tools                       [str] Specify tools to use for variant calling (multiple separated with commas):
-                                          Available: ASCAT, CNVkit, ControlFREEC, FreeBayes, HaplotypeCaller
-                                          Manta, mpileup, MSIsensor, Mutect2, Strelka, TIDDIT
-                                          and/or for annotation:
-                                          snpEff, VEP, merge
-                                          Default: None
-
-    Modify fastqs (trim/split):
-      --trim_fastq                 [bool] Run Trim Galore
-      --clip_r1                     [int] Instructs Trim Galore to remove bp from the 5' end of read 1 (or single-end reads)
-      --clip_r2                     [int] Instructs Trim Galore to remove bp from the 5' end of read 2 (paired-end reads only)
-      --three_prime_clip_r1         [int] Instructs Trim Galore to remove bp from the 3' end of read 1 AFTER adapter/quality trimming has been performed
-      --three_prime_clip_r2         [int] Instructs Trim Galore to remove bp from the 3' end of read 2 AFTER adapter/quality trimming has been performed
-      --trim_nextseq                [int] Instructs Trim Galore to apply the --nextseq=X option, to trim based on quality after removing poly-G tails
-      --save_trimmed               [bool] Save trimmed FastQ file intermediates
-      --split_fastq                 [int] Specify how many reads should be contained in the split fastq file
-                                          Default: no split
-
-    Preprocessing:
-      --markdup_java_options        [str] Establish values for markDuplicates memory consumption
-                                          Default: ${params.markdup_java_options}
-      --use_gatk_spark             [bool] Enable usage of GATK Spark implementation of their tools in local mode
-      --save_bam_mapped            [bool] Save Mapped BAMs
-      --skip_markduplicates        [bool] Skip MarkDuplicates
-
-    Variant Calling:
-      --ascat_ploidy                [int] Use this parameter to overwrite default behavior from ASCAT regarding ploidy
-                                          Requires that --ascat_purity is set
-      --ascat_purity                [int] Use this parameter to overwrite default behavior from ASCAT regarding purity
-                                          Requires that --ascat_ploidy is set
-      --cf_coeff                    [str] Control-FREEC coefficientOfVariation
-                                          Default: ${params.cf_coeff}
-      --cf_ploidy                   [str] Control-FREEC ploidy
-                                          Default: ${params.cf_ploidy}
-      --cf_window                   [int] Control-FREEC window size
-                                          Default: Disabled
-      --generate_gvcf              [bool] Enable g.vcf output from GATK HaplotypeCaller
-      --no_strelka_bp              [bool] Will not use Manta candidateSmallIndels for Strelka (not recommended by Best Practices)
-      --pon                        [file] Panel-of-normals VCF (bgzipped) for GATK Mutect2 / Sentieon TNscope
-                                          See: https://software.broadinstitute.org/gatk/documentation/tooldocs/current/org_broadinstitute_hellbender_tools_walkers_mutect_CreateSomaticPanelOfNormals.php
-      --pon_index                  [file] Index of pon panel-of-normals VCF
-                                          If none provided, will be generated automatically from the PON
-      --ignore_soft_clipped_bases  [bool] Do not analyze soft clipped bases in the reads for GATK Mutect2
-                                          Default: Do not use
-      --umi                        [bool] If provided, UMIs steps will be run to extract and annotate the reads with UMI and create consensus reads
-      --read_structure1          [string] When processing UMIs, a read structure should always be provided for each of the fastq files. If the read does not contain any UMI, the structure will be +T (i.e. only template of any length). 
-                                          See: https://github.com/fulcrumgenomics/fgbio/wiki/Read-Structures
-      --read_structure2          [string] When processing UMIs, a read structure should always be provided for each of the fastq files. If the read does not contain any UMI, the structure will be +T (i.e. only template of any length). 
-                                          See: https://github.com/fulcrumgenomics/fgbio/wiki/Read-Structures
-
-    Annotation:
-      --annotate_tools              [str] Specify from which tools Sarek should look for VCF files to annotate, only for step Annotate
-                                          Available: HaplotypeCaller, Manta, Mutect2, Strelka, TIDDIT
-                                          Default: None
-      --annotation_cache           [bool] Enable the use of cache for annotation, to be used with --snpeff_cache and/or --vep_cache
-      --snpeff_cache               [file] Specity the path to snpEff cache, to be used with --annotation_cache
-      --vep_cache                  [file] Specity the path to VEP cache, to be used with --annotation_cache
-      --cadd_cache                 [bool] Enable CADD cache
-      --cadd_indels                [file] Path to CADD InDels file
-      --cadd_indels_tbi            [file] Path to CADD InDels index
-      --cadd_wg_snvs               [file] Path to CADD SNVs file
-      --cadd_wg_snvs_tbi           [file] Path to CADD SNVs index
-      --genesplicer                [file] Enable genesplicer within VEP
-
-    References options:
-      --igenomes_base              [file] Specify base path to AWS iGenomes
-                                          Default: ${params.igenomes_base}
-      --igenomes_ignore            [bool] Do not use AWS iGenomes. Will load genomes.config instead of igenomes.config
-      --genomes_base               [file] Specify base path to reference genome
-      --save_reference             [bool] Save built references
-      
-    References:                           If not specified in the configuration file or you wish to overwrite any of the references.
-      --ac_loci                    [file] Loci file for ASCAT
-      --ac_loci_gc                 [file] Loci GC file for ASCAT
-      --bwa                        [file] BWA indexes
-                                          If none provided, will be generated automatically from the fasta reference
-      --chr_dir                    [file] Chromosomes folder
-      --chr_length                 [file] Chromosomes length file
-      --dbsnp                      [file] Dbsnp file
-      --dbsnp_index                [file] Dbsnp index
-                                          If none provided, will be generated automatically if a dbsnp file is provided
-      --dict                       [file] Fasta dictionary file
-                                          If none provided, will be generated automatically from the fasta reference
-      --fasta                      [file] Fasta reference
-      --fasta_fai                  [file] Fasta reference index
-                                          If none provided, will be generated automatically from the fasta reference
-      --germline_resource          [file] Germline Resource File for GATK Mutect2
-      --germline_resource_index    [file] Germline Resource Index for GATK Mutect2
-                                          if none provided, will be generated automatically if a germlineResource file is provided
-      --intervals                  [file] Intervals
-                                          If none provided, will be generated automatically from the fasta reference
-                                          Use --no_intervals to disable automatic generation
-      --known_indels               [file] Known indels file
-      --known_indels_index         [file] Known indels index
-                                          If none provided, will be generated automatically if a knownIndels file is provided
-      --mappability                [file] Mappability file for Control-FREEC
-      --snpeff_db                   [str] snpEff Database version
-      --species                     [str] Species for VEP
-      --vep_cache_version           [int] VEP cache version
-
-    Other options:
-      --outdir                     [file] The output directory where the results will be saved
-      --publish_dir_mode           [list] Mode for publishing results in the output directory (only one)
-                                          Available: symlink, rellink, link, copy, copyNoFollow, move
-                                          Default: copy
-      --sequencing_center           [str] Name of sequencing center to be displayed in BAM file
-      --multiqc_config             [file] Specify a custom config file for MultiQC
-      --monochrome_logs            [bool] Logs will be without colors
-      --email                       [str] Set this parameter to your e-mail address to get a summary e-mail with details of the run sent to you when the workflow exits
-      --email_on_fail               [str] Same as --email, except only send mail if the workflow is not successful
-      --plaintext_email            [bool] Enable plaintext email
-      --max_multiqc_email_size      [str] Threshold size for MultiQC report to be attached in notification email. If file generated by pipeline exceeds the threshold, it will not be attached
-                                          Default: 25MB
-      -name                         [str] Name for the pipeline run. If not specified, Nextflow will automatically generate a random mnemonic
-
-    AWSBatch options:
-      --awsqueue                    [str] The AWSBatch JobQueue that needs to be set when running on AWSBatch
-      --awsregion                   [str] The AWS Region for your AWS Batch job to run on
-      --awscli                      [str] Path to the AWS CLI tool
-    """.stripIndent()
-}
-
-def printNfcoreSarekWelcomeGraphic() {
-  log.info nfcoreHeader()
-}
-
-def getSummaryMapFromParamsObjectAndArgs(step, custom_runName, skipQC, tools) {
-  // also requires params and workflow maps to be initialized
-  
-  def summary = [:]
-
-  if (workflow.revision) summary['Pipeline Release'] = workflow.revision
-
-  summary['Run Name'] = custom_runName ?: workflow.runName
-  summary['Max Resources'] = "${params.max_memory} memory, ${params.max_cpus} cpus, ${params.max_time} time per job"
-
-  if (workflow.containerEngine) summary['Container']  = "${workflow.containerEngine} - ${workflow.container}"
-
-  summary['Input'] = params.input
-  summary['Step']  = step
-  summary['Genome'] = params.genome
-
-  if (params.no_intervals && step != 'annotate')  summary['Intervals'] = 'Do not use'
-
-  summary['Nucleotides/s'] = params.nucleotides_per_second
-
-  if (params.sentieon) summary['Sention'] = "Using Sentieon for Preprocessing and/or Variant Calling"
-  if (params.skip_qc) summary['QC tools skipped']  = skipQC.join(', ')
-  if (params.target_bed) summary['Target BED']  = params.target_bed
-  if (params.tools) summary['Tools'] = tools.join(', ')
-
-  if (params.trim_fastq || params.split_fastq) summary['Modify fastqs (trim/split)'] = ""
-
-  if (params.trim_fastq) {
-      summary['Fastq trim']         = "Fastq trim selected"
-      summary['Trim R1']            = "${params.clip_r1} bp"
-      summary['Trim R2']            = "${params.clip_r2} bp"
-      summary["Trim 3' R1"]         = "${params.three_prime_clip_r1} bp"
-      summary["Trim 3' R2"]         = "${params.three_prime_clip_r2} bp"
-      summary['NextSeq Trim']       = "${params.trim_nextseq} bp"
-      summary['Saved Trimmed Fastq'] = params.save_trimmed ? 'Yes' : 'No'
-  }
-
-  if (params.split_fastq)          summary['Reads in fastq']                   = params.split_fastq
-
-  summary['MarkDuplicates'] = "Options"
-  summary['Java options'] = params.markdup_java_options
-  summary['GATK Spark']   = params.use_gatk_spark ? 'Yes' : 'No'
-
-  summary['Save BAMs mapped']   = params.save_bam_mapped ? 'Yes' : 'No'
-  summary['Skip MarkDuplicates']   = params.skip_markduplicates ? 'Yes' : 'No'
-
-  if ('ascat' in tools) {
-      summary['ASCAT'] = "Options"
-      if (params.ascat_purity) summary['purity'] = params.ascat_purity
-      if (params.ascat_ploidy) summary['ploidy'] = params.ascat_ploidy
-  }
-
-  if ('controlfreec' in tools) {
-      summary['Control-FREEC'] = "Options"
-      if (params.cf_window)    summary['window']                 = params.cf_window
-      if (params.cf_coeff)     summary['coefficientOfVariation'] = params.cf_coeff
-      if (params.cf_ploidy)    summary['ploidy']                 = params.cf_ploidy
-  }
-
-  if ('haplotypecaller' in tools)             summary['GVCF']       = params.generate_gvcf ? 'Yes' : 'No'
-  if ('strelka' in tools && 'manta' in tools) summary['Strelka BP'] = params.no_strelka_bp ? 'No' : 'Yes'
-  if (params.pon && ('mutect2' in tools || (params.sentieon && 'tnscope' in tools))) summary['Panel of normals'] = params.pon
-
-  if (params.annotate_tools) summary['Tools to annotate'] = annotate_tools.join(', ')
-
-  if (params.annotation_cache) {
-      summary['Annotation cache'] = "Enabled"
-      if (params.snpeff_cache) summary['snpEff cache'] = params.snpeff_cache
-      if (params.vep_cache)    summary['VEP cache']    = params.vep_cache
-  }
-
-  if (params.cadd_cache) {
-      summary['CADD cache'] = "Enabled"
-      if (params.cadd_indels)  summary['CADD indels']  = params.cadd_indels
-      if (params.cadd_wg_snvs) summary['CADD wg snvs'] = params.cadd_wg_snvs
-  }
-
-  if (params.genesplicer) summary['genesplicer'] = "Enabled"
-
-  if (params.igenomes_base && !params.igenomes_ignore) summary['AWS iGenomes base'] = params.igenomes_base
-  if (params.igenomes_ignore)                          summary['AWS iGenomes']      = "Do not use"
-  if (params.genomes_base && !params.igenomes_ignore)  summary['Genomes base']      = params.genomes_base
-
-  summary['Save Reference']    = params.save_reference ? 'Yes' : 'No'
-
-  if (params.ac_loci)                 summary['Loci']                    = params.ac_loci
-  if (params.ac_loci_gc)              summary['Loci GC']                 = params.ac_loci_gc
-  if (params.bwa)                     summary['BWA indexes']             = params.bwa
-  if (params.chr_dir)                 summary['Chromosomes']             = params.chr_dir
-  if (params.chr_length)              summary['Chromosomes length']      = params.chr_length
-  if (params.dbsnp)                   summary['dbsnp']                   = params.dbsnp
-  if (params.dbsnp_index)             summary['dbsnpIndex']              = params.dbsnp_index
-  if (params.dict)                    summary['dict']                    = params.dict
-  if (params.fasta)                   summary['fasta reference']         = params.fasta
-  if (params.fasta_fai)               summary['fasta index']             = params.fasta_fai
-  if (params.germline_resource)       summary['germline resource']       = params.germline_resource
-  if (params.germline_resource_index) summary['germline resource index'] = params.germline_resource_index
-  if (params.intervals)               summary['intervals']               = params.intervals
-  if (params.known_indels)            summary['known indels']            = params.known_indels
-  if (params.known_indels_index)      summary['known indels index']      = params.known_indels_index
-  if (params.mappability)             summary['Mappability']             = params.mappability
-  if (params.snpeff_cache)            summary['snpEff cache']            = params.snpeff_cache
-  if (params.snpeff_db)               summary['snpEff DB']               = params.snpeff_db
-  if (params.species)                 summary['species']                 = params.species
-  if (params.vep_cache)               summary['VEP cache']               = params.vep_cache
-  if (params.vep_cache_version)       summary['VEP cache version']       = params.vep_cache_version
-
-  summary['Output dir']        = params.outdir
-  summary['Publish dir mode']  = params.publish_dir_mode
-  if (params.sequencing_center) summary['Sequenced by'] = params.sequencing_center
-
-  summary['Launch dir']  = workflow.launchDir
-  summary['Working dir'] = workflow.workDir
-  summary['Script dir']  = workflow.projectDir
-  summary['User']        = workflow.userName
-
-  if (params.multiqc_config) summary['MultiQC config'] = params.multiqc_config
-
-  summary['Config Profile'] = workflow.profile
-
-  if (params.config_profile_description) summary['Config Description'] = params.config_profile_description
-  if (params.config_profile_contact)     summary['Config Contact']     = params.config_profile_contact
-  if (params.config_profile_url)         summary['Config URL']         = params.config_profile_url
-
-  summary['Config Files']   = workflow.configFiles.join(', ')
-
-
-  if (workflow.profile.contains('awsbatch')) {
-      summary['AWS Region'] = params.awsregion
-      summary['AWS Queue']  = params.awsqueue
-      summary['AWS CLI']    = params.awscli
-  }
-
-  if (params.email || params.email_on_fail) {
-      summary['E-mail Address']    = params.email
-      summary['E-mail on failure'] = params.email_on_fail
-      summary['MultiQC maxsize']   = params.max_multiqc_email_size
-  }
-
-  return summary
-}
-
-def printSummaryMessage(summaryMap) {
-  log.info summaryMap.collect { k,v -> "${k.padRight(18)}: $v" }.join("\n")
-  log.info "-\033[2m--------------------------------------------------\033[0m-"
-}
-
-def printMutec2Warning(inputToolsList) {
-  if ('mutect2' in inputToolsList && !(params.pon)) log.warn "[nf-core/sarek] Mutect2 was requested, but as no panel of normals were given, results will not be optimal"
-
 }
 
 def initializeParamsObject(inputStep, inputToolsList) {
