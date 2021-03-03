@@ -1,15 +1,9 @@
 include {
-    getInputStep;
     getInputTools;
     hasExtension;
     isChannelActive;
     getInactiveChannelFlag
 } from "${params.modulesDir}/sarek.nf"
-
-step = getInputStep()
-tools = getInputTools(step)
-
-initializeParamsScope(step, tools)
 
 process FastQCFQ {
     label 'FastQC'

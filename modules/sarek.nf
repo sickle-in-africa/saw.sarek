@@ -274,10 +274,6 @@ def returnStatus(it) {
     return it
 }
 
-
-def getInputStep() {
-    return params.step ? params.step.toLowerCase().replaceAll('-', '').replaceAll('_', '') : ''
-}
 def getInputTools(inputStep) {
     if (inputStep == 'controlfreec') {
         return ['controlfreec']

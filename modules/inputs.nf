@@ -5,7 +5,6 @@ include {
 } from "${params.modulesDir}/nfcore.nf"
 
 include {
-    getInputStep;
     getInputTools;
     getInputTsvPath;
     getInputSkipQC;

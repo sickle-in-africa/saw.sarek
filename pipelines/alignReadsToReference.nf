@@ -161,13 +161,6 @@ workflow {
         __genderMap__,\
         __statusMap__)
 
-    /*
-
-    inputBamFastQC = stripSecondInputFile(readGroupsAsBam)
-    fastQCFQReport = FastQCFQ(readGroups)
-    fastQCBAMReport = FastQCBAM(inputBamFastQC)
-    fastQCReport = fastQCFQReport.mix(fastQCBAMReport)
-
     /**/
 
 }
