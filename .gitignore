@@ -1,4 +1,3 @@
-pipelines/nextflow.config
 
 *.code-workspace
 *.pyc
