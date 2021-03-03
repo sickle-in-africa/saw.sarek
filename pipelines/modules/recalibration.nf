@@ -1,4 +1,8 @@
-process BaseRecalibrator {
+include {
+    isChannelActive
+} from "${params.modulesDir}/sarek.nf"
+
+process GetBaseRecalibrationReport {
     label 'cpus_1'
 
     tag "${idPatient}-${idSample}-${intervalBed.baseName}"
@@ -15,13 +19,12 @@ process BaseRecalibrator {
 
     output:
         tuple val(idPatient), val(idSample), file("${prefix}${idSample}.recal.table")
-        tuple val(idPatient), val(idSample)
 
-    when: params.known_indels
+    when: (params.skip_baserecalibration == false)
 
     script:
-    dbsnpOptions = params.dbsnp ? "--known-sites ${dbsnp}" : ""
-    knownOptions = params.known_indels ? knownIndels.collect{"--known-sites ${it}"}.join(' ') : ""
+    dbsnpOptions = isChannelActive(dbsnp) ? "--known-sites ${dbsnp}" : ""
+    knownOptions = isChannelActive(knownIndels) ? knownIndels.collect{"--known-sites ${it}"}.join(' ') : ""
     prefix = params.no_intervals ? "" : "${intervalBed.baseName}_"
     intervalsOptions = params.no_intervals ? "" : "-L ${intervalBed}"
     // TODO: --use-original-qualities ???
@@ -39,7 +42,7 @@ process BaseRecalibrator {
     """
 }
 
-process GatherBQSRReports {
+process MergeBaseRecalibrationReportsForSample {
     label 'memory_singleCPU_2_task'
     label 'cpus_2'
 
@@ -56,10 +59,7 @@ process GatherBQSRReports {
 
     output:
         tuple val(idPatient), val(idSample), file("${idSample}.recal.table")
-        file("${idSample}.recal.table")
         tuple val(idPatient), val(idSample)
-
-    when: !(params.no_intervals)
 
     script:
     input = recal.collect{"-I ${it}"}.join(' ')
@@ -146,9 +146,8 @@ process IndexRecalibratedSampleReadGoup {
     """
 }
 
-def writeTsvFilesForRecalibrationTables(
+def writeTsvFilesForRecalibrationReports(
         recalTableTSV,\
-        recalTableSampleTSV,\
         genderMap,\
         statusMap) {
 
@@ -165,7 +164,7 @@ def writeTsvFilesForRecalibrationTables(
             name: 'mapped_no_duplicates_marked.tsv', sort: true, storeDir: "${params.outdir}/Preprocessing/TSV"
         )
 
-        recalTableSampleTSV
+        recalTableTSV
             .collectFile(storeDir: "${params.outdir}/Preprocessing/TSV/") {
                 idPatient, idSample ->
                 status = statusMap[idPatient, idSample]
@@ -188,7 +187,7 @@ def writeTsvFilesForRecalibrationTables(
             name: 'duplicates_marked.tsv', sort: true, storeDir: "${params.outdir}/Preprocessing/TSV"
         )
 
-        recalTableSampleTSV
+        recalTableTSV
             .collectFile(storeDir: "${params.outdir}/Preprocessing/TSV/") {
                 idPatient, idSample ->
                 status = statusMap[idPatient, idSample]

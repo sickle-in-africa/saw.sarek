@@ -372,6 +372,11 @@ def getInputSampleListAsChannel(inputTsvPath, inputStep) {
   }
 }
 
+def checkFileExists(it) {
+    if (!file(it).exists()) exit 1, "Missing file: ${it}, see --help for more information"
+    else return true
+}
+
 def checkInputReferenceGenomeExists() {
     if (params.genomes && !params.genomes.containsKey(params.genome) && !params.igenomes_ignore) {
         exit 1, "The provided genome '${params.genome}' is not available in the iGenomes file. Currently the available genomes are ${params.genomes.keySet().join(", ")}"
@@ -414,6 +419,9 @@ def checkAwsBatchSettings() {
   }
 }
 def checkInputTsvPath(inputTsvPath) {
+
+  checkFileExists(inputTsvPath)
+
   if ( !hasExtension(inputTsvPath, "tsv") ) exit 1, "your input sample tsv file has the wrong extension. Please check and try again."
   if ( hasExtension(inputTsvPath, "vcf") || hasExtension(inputTsvPath, "vcf.gz") ) exit 1, "you have specified a vcf input instead of tsv. That was perhaps meant for the annotation step."
 }
@@ -422,12 +430,23 @@ def checkBaseRecalibrationIsDesired() {
     if ( params.skip_baserecalibration == true ) exit 1, "you have already asked to skip recalibration in your nextflow config file. Set 'params.skip_baserecalibration = false' if you want to go ahead."
 }
 
+def checkBaseRecalibrationIsPossible(dbsnp, known_indels) {
+    if ( (params.skip_baserecalibration == false) && (isKnownSitesAvailable(dbsnp, known_indels) == false) ) {
+      exit 1, "you have asked for base recalibration but have not supplied any known variant sites."
+    }
+}
+
 def checkTrimmingAndUmiFlags(trimmingStatus, umiStatus) {
   if (trimmingStatus && umiStatus) exit 1, "trimming and umi processing cannot be applied at the same time. Chose only one, or neither."
 } 
 
 def isInputTsvFileSpecified() {
   if (params.input) return true
+  else return false
+}
+
+def isKnownSitesAvailable(dbsnp, known_indels) {
+  if ( dbsnp || known_indels ) return true
   else return false
 }
 

@@ -1,20 +1,24 @@
 #!/usr/bin/env nextflow
+/*
+ *  PREPARING THE WORKSPACE FOR BASE RECALIBRATION
+ *  ==============================================
+ *
+ *      This script prepares the user's workspace for recalibrating the aligned
+ *      sample read groups (bam files) by generating the necessary base quality
+ *      score recalibration reports with gatk. To speed up the process, we first
+ *      create intervals and then the reportss are generated in parallel across 
+ *      each interval. After generating the reports, we merge them across 
+ *      intervals for each sample. 
+ *
+ *****************************************************************************/
 
 nextflow.enable.dsl=2
 
-include { isChannelActive } from "${params.modulesDir}/sarek.nf"
+include { groupByPatientSample } from "${params.modulesDir}/sarek.nf"
 
 include {
     initializeInputChannelsForRecalibration
 } from "${params.modulesDir}/inputs.nf"
-
-include {
-    GetBwaIndexes;
-    GetGatkDictionary;
-    GetReferenceSequenceIndex;
-    GetDbsnpIndex;
-    GetKnownIndelsIndex
-} from "${params.modulesDir}/indices.nf"
 
 include {
     GetIntervalsPlan;
@@ -23,40 +27,26 @@ include {
 } from "${params.modulesDir}/intervals.nf"
 
 include {
-    BaseRecalibrator;
-    GatherBQSRReports;
-    writeTsvFilesForRecalibrationTables
+    GetBaseRecalibrationReport;
+    MergeBaseRecalibrationReportsForSample;
+    writeTsvFilesForRecalibrationReports
 } from "${params.modulesDir}/recalibration.nf"
 
 
 workflow {
 
-    (inputSample,\
-     igenomesReferenceSequenceFasta,
-     igenomesReferenceSequenceDictionary,
-     igenomesReferenceSequenceIndex,
+    (sampleReadGroups,
+     referenceSequenceFasta,
+     referenceSequenceDictionary,
+     referenceSequenceIndex,
      dbsnp,
+     dbsnpIndex,
      intervalsPlanFromInput,
      knownIndels,
+     knownIndelsIndex,
      __genderMap__,
-     __statusMap__)\
+     __statusMap__)
         = initializeInputChannelsForRecalibration()
-
-    // get reference indexes as channels
-
-    referenceSequenceDictionary\
-        = GetGatkDictionary(\
-            igenomesReferenceSequenceFasta,\
-            igenomesReferenceSequenceDictionary)
-
-    referenceSequenceIndex\
-        = GetReferenceSequenceIndex(\
-            igenomesReferenceSequenceFasta,\
-            igenomesReferenceSequenceIndex)
-
-    dbsnpIndex = GetDbsnpIndex(dbsnp)
-
-    knownIndelsIndex = GetKnownIndelsIndex(knownIndels)
 
     //  set up intervals for recalibrating bases in parallel  //
 
@@ -70,41 +60,36 @@ workflow {
     intervalsWithDurations\
         = addDurationToInterval(intervals)
 
-    bamBaseRecalibrator\
-        = inputSample.combine(intervalsWithDurations)
+    sampleReadGroupAndIntervalPairs\
+        = sampleReadGroups.combine(intervalsWithDurations)
 
-    //  create recalibration tables  //
+    //  create recalibration reports  //
 
-    (tableGatherBQSRReports,\
-     recalTableTSVnoInt)\
-        = BaseRecalibrator(\
-            bamBaseRecalibrator,\
+    baseRecalibrationReports\
+        = GetBaseRecalibrationReport(\
+            sampleReadGroupAndIntervalPairs,\
             dbsnp,\
             dbsnpIndex,\
-            igenomesReferenceSequenceFasta,\
+            referenceSequenceFasta,\
             referenceSequenceDictionary,\
             referenceSequenceIndex,\
             knownIndels,\
             knownIndelsIndex)
 
-    tableGatherBQSRReports = tableGatherBQSRReports.groupTuple(by:[0, 1])
+    sampleGroupsOfBaseRecalibrationReports\
+        = groupByPatientSample(baseRecalibrationReports)
 
-    //   merge recalibration tables  //
+    //   merge recalibration reports  //
 
-    (recalTable,\
-     baseRecalibratorReport,\
-     recalTableTSV)\
-        = GatherBQSRReports(\
-            tableGatherBQSRReports)
-
+    (sampleBaseRecalibrationReports,\
+     recalReportTSV)\
+        = MergeBaseRecalibrationReportsForSample(\
+            sampleGroupsOfBaseRecalibrationReports)
 
     //  write details of outputs to tsv files  //
 
-    recalTableSampleTSV = recalTableTSV.mix(recalTableTSVnoInt)
-
-    writeTsvFilesForRecalibrationTables(\
-        recalTableTSV,\
-        recalTableSampleTSV,\
+    writeTsvFilesForRecalibrationReports(\
+        recalReportTSV,\
         __genderMap__,\
         __statusMap__)
 

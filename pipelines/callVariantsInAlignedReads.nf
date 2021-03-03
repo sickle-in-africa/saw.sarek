@@ -37,14 +37,6 @@ include {
 } from "${params.modulesDir}/inputs.nf"
 
 include {
-    GetBwaIndexes;
-    GetGatkDictionary;
-    GetReferenceSequenceIndex;
-    GetDbsnpIndex;
-    GetKnownIndelsIndex
-} from "${params.modulesDir}/indices.nf"
-
-include {
     GetIntervalsPlan;
     GetIntervals;
     addDurationToInterval
@@ -59,44 +51,31 @@ include {
     CallVariantsWithFreebayes;
     MergeVariantSetsForSample;
     branchIntoGenotypingOrNoGenotypingChannels;
-    removeIntervals;
+    removeIntervals
 } from "${params.modulesDir}/calling.nf"
 
 
 workflow {
 
-    (sampleReadGroups,\
-     igenomesReferenceSequenceFasta,
-     igenomesReferenceSequenceDictionary,
-     igenomesReferenceSequenceIndex,
+    (sampleReadGroups,
+     referenceSequenceFasta,
+     referenceSequenceDictionary,
+     referenceSequenceIndex,
      dbsnp,
+     dbsnpIndex,
      intervalsPlanFromInput,
      targetIntervalFromInput,
      __genderMap__,
-     __statusMap__)\
+     __statusMap__)
         = initializeInputChannelsForCalling()
 
     softwareVersions = GetSoftwareVersions()
 
-    //  get reference indexes as channels  //
-    
-    referenceSequenceDictionary\
-        = GetGatkDictionary(\
-            igenomesReferenceSequenceFasta,\
-            igenomesReferenceSequenceDictionary)
-
-    referenceSequenceIndex\
-        = GetReferenceSequenceIndex(\
-            igenomesReferenceSequenceFasta,\
-            igenomesReferenceSequenceIndex)
-
-    dbsnpIndex = GetDbsnpIndex(dbsnp)
-
    //  set up intervals for calling variants in parallel  //
 
     intervalsPlan\
-        = GetIntervalsPlan(\
-            referenceSequenceIndex,\
+        = GetIntervalsPlan(
+            referenceSequenceIndex,
             intervalsPlanFromInput)
 
     intervals = GetIntervals(intervalsPlan).flatten()
@@ -115,7 +94,7 @@ workflow {
             dbsnp,
             dbsnpIndex,\
             referenceSequenceDictionary,\
-            igenomesReferenceSequenceFasta,\
+            referenceSequenceFasta,\
             referenceSequenceIndex)
 
     (forGenotyping,\
@@ -129,7 +108,7 @@ workflow {
             dbsnp,\
             dbsnpIndex,\
             referenceSequenceDictionary,\
-            igenomesReferenceSequenceFasta,\
+            referenceSequenceFasta,\
             referenceSequenceIndex)
 
     variantSetAndIntervalPairsFromGatk\
@@ -141,14 +120,14 @@ workflow {
     (sampleVariantSetsFromStrelka)\
         = CallVariantsWithStrelka(\
             sampleReadGroups,\
-            igenomesReferenceSequenceFasta,\
+            referenceSequenceFasta,\
             referenceSequenceIndex,\
             targetIntervalFromInput)
 
     (sampleVariantSetsFromManta)\
         = CallVariantsWithManta(\
             sampleReadGroups,\
-            igenomesReferenceSequenceFasta,\
+            referenceSequenceFasta,\
             referenceSequenceIndex,\
             targetIntervalFromInput)
 
@@ -156,13 +135,13 @@ workflow {
      tidditOut)\
         = CallVariantsWithTiddit(\
             sampleReadGroups,\
-            igenomesReferenceSequenceFasta,\
+            referenceSequenceFasta,\
             referenceSequenceIndex)
 
     (variantSetsFromFreebayes)\
         = CallVariantsWithFreebayes(\
             sampleReadGroupAndIntervalPairs,\
-            igenomesReferenceSequenceFasta,\
+            referenceSequenceFasta,\
             softwareVersions)
 
     //  concatenate variant sets across intervals  //
@@ -173,19 +152,21 @@ workflow {
     sampleGroupsOfVariantSetsFromFreeBayes\
         = groupByPatientSample(variantSetsFromFreebayes)
 
+    sampleGroupsOfVariantSetsFromFreeBayes | view()
+
     sampleGroupsOfVariantSets\
-        = sampleGroupsOfVariantSetsFromGatk.mix(\
+        = sampleGroupsOfVariantSetsFromGatk.mix(
             sampleGroupsOfVariantSetsFromFreeBayes)
 
     sampleVariantSetsFromGatkAndFreebayes\
-        = MergeVariantSetsForSample(\
-            sampleGroupsOfVariantSets,\
-            referenceSequenceIndex,\
+        = MergeVariantSetsForSample(
+            sampleGroupsOfVariantSets,
+            referenceSequenceIndex,
             targetIntervalFromInput)
 
     sampleVariantSets\
-        = sampleVariantSetsFromGatkAndFreebayes.mix(\
-            sampleVariantSetsFromStrelka,\
+        = sampleVariantSetsFromGatkAndFreebayes.mix(
+            sampleVariantSetsFromStrelka,
             sampleVariantSetsFromManta,
             sampleVariantSetsFromTiddit)
 

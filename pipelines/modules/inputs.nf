@@ -27,6 +27,7 @@ include {
     checkInputTsvPath;
     checkTrimmingAndUmiFlags;
     checkBaseRecalibrationIsDesired;
+    checkBaseRecalibrationIsPossible;
 
     isChannelActive
 } from "${params.modulesDir}/sarek.nf"
@@ -143,20 +144,22 @@ def initializeInputChannelsForCalling() {
     _dict_ = params.dict ? Channel.value(file(params.dict)) : getInactiveChannel()
     _fastaFai_ = params.fasta_fai ? Channel.value(file(params.fasta_fai)) : getInactiveChannel()
     _dbsnp_ = params.dbsnp ? Channel.value(file(params.dbsnp)) : getInactiveChannel()
+    dbsnp_index = params.dbsnp_index ? Channel.value(file(params.dbsnp_index)) : getInactiveChannel()
     _knownIndels_ = params.known_indels ? Channel.value(file(params.known_indels)) : getInactiveChannel()
     _intervalsList_ = params.intervals ? Channel.value(file(params.intervals)) : getInactiveChannel()
 
     _targetBed_ = params.target_bed ? Channel.value(file(params.target_bed)) : getInactiveChannel()
 
-    return [\
-        inputSample,\
-        _fasta_,\
-        _dict_,\
-        _fastaFai_,\
-        _dbsnp_,\
-        _intervalsList_,\
-        _targetBed_,\
-        __genderMap__,\
+    return [
+        inputSample,
+        _fasta_,
+        _dict_,
+        _fastaFai_,
+        _dbsnp_,
+        dbsnp_index,
+        _intervalsList_,
+        _targetBed_,
+        __genderMap__,
         __statusMap__]
 
 }
@@ -189,11 +192,14 @@ def initializeInputChannelsForRecalibration() {
     _dict_ = params.dict ? Channel.value(file(params.dict)) : getInactiveChannel()
     _fastaFai_ = params.fasta_fai ? Channel.value(file(params.fasta_fai)) : getInactiveChannel()
     _dbsnp_ = params.dbsnp ? Channel.value(file(params.dbsnp)) : getInactiveChannel()
-    _knownIndels_ = params.known_indels ? Channel.value(file(params.known_indels)) : getInactiveChannel()
+    dbsnp_index = params.dbsnp_index ? Channel.value(file(params.dbsnp_index)) : getInactiveChannel()
     _intervalsList_ = params.intervals ? Channel.value(file(params.intervals)) : getInactiveChannel()
-    _known_indels_ = params.known_indels ? Channel.value(file(params.known_indels)) : getInactiveChannel()
+    known_indels = params.known_indels ? Channel.value(file(params.known_indels)) : getInactiveChannel()
+    known_indels_index = params.known_indels_index ? Channel.value(file(params.known_indels_index)) : getInactiveChannel()
 
     inputSample = getInputSampleListAsChannel(tsvPath, step)
+
+    checkBaseRecalibrationIsPossible(params.dbsnp, params.known_indels)
 
     (__genderMap__, __statusMap__, inputSample) = extractInfos(inputSample)
 
@@ -203,8 +209,10 @@ def initializeInputChannelsForRecalibration() {
         _dict_,\
         _fastaFai_,\
         _dbsnp_,\
+        dbsnp_index,\
         _intervalsList_,\
-        _known_indels_,\
+        known_indels,\
+        known_indels_index,\
         __genderMap__,\
         __statusMap__]
 

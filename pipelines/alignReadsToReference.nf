@@ -36,11 +36,6 @@ include {
 } from "${params.modulesDir}/inputs.nf"
 
 include {
-    GetBwaIndexes;
-    GetReferenceSequenceIndex
-} from "${params.modulesDir}/indices.nf"
-
-include {
     FastQCFQ;
     FastQCBAM;
     TrimReads;
@@ -67,24 +62,12 @@ include {
 workflow {
 
     (readGroupsFromInput,\
-     igenomesReferenceSequenceFasta,
-     igenomesBwaIndexTuple,
-     igenomesReferenceSequenceIndex,
+     referenceSequenceFasta,
+     bwaIndexTuple,
+     referenceSequenceIndex,
      __genderMap__,
      __statusMap__)\
         = initializeInputChannelsForMapping()
-
-    //  get reference indexes as channels  //
-
-    bwaIndexTuple\
-        = GetBwaIndexes(\
-            igenomesReferenceSequenceFasta,\
-            igenomesBwaIndexTuple)
-    
-    referenceSequenceIndex\
-        = GetReferenceSequenceIndex(\
-            igenomesReferenceSequenceFasta,\
-            igenomesReferenceSequenceIndex)
 
     //  preprocess reads  //
 
@@ -116,7 +99,7 @@ workflow {
         = UMIMapBamFile(\
             umi_converted_bams_ch,\
             bwaIndexTuple,\
-            igenomesReferenceSequenceFasta,\
+            referenceSequenceFasta,\
             referenceSequenceIndex)
 
     (umi_histogram_ch,\
@@ -139,7 +122,7 @@ workflow {
         = AlignReadsToReferenceSequence(\
             readGroupsForAligning,\
             bwaIndexTuple,\
-            igenomesReferenceSequenceFasta,\
+            referenceSequenceFasta,\
             referenceSequenceIndex)
 
     sampleGroupsOfAlignedReadGroups\

@@ -11,12 +11,6 @@ include {
 } from "${params.modulesDir}/inputs.nf"
 
 include {
-    GetBwaIndexes;
-    GetGatkDictionary;
-    GetReferenceSequenceIndex;
-} from "${params.modulesDir}/indices.nf"
-
-include {
     GetIntervalsPlan;
     GetIntervals;
     addDurationToInterval
@@ -25,35 +19,24 @@ include {
 include {
     RecalibrateBasesInReadGroup;
     MergeRecalibratedReadGroupsForSample;
-    IndexRecalibratedSampleReadGoup;
     writeTsvFilesForRecalibratedBams
 } from "${params.modulesDir}/recalibration.nf"
 
 
 workflow {
 
-    (sampleReadGroups,\
-     igenomesReferenceSequenceFasta,
-     igenomesReferenceSequenceDictionary,
-     igenomesReferenceSequenceIndex,
+    (sampleReadGroups,
+     referenceSequenceFasta,
+     referenceSequenceDictionary,
+     referenceSequenceIndex,
      dbsnp,
+     dbsnpIndex,
      intervalsPlanFromInput,
      knownIndels,
+     knownIndelsIndex,
      __genderMap__,
      __statusMap__)\
         = initializeInputChannelsForRecalibration()
-
-    // get reference indexes as channels
-
-    referenceSequenceDictionary\
-        = GetGatkDictionary(\
-            igenomesReferenceSequenceFasta,\
-            igenomesReferenceSequenceDictionary)
-
-    referenceSequenceIndex\
-        = GetReferenceSequenceIndex(\
-            igenomesReferenceSequenceFasta,\
-            igenomesReferenceSequenceIndex)
 
     //  set up intervals for recalibrating bases in parallel  //
 
@@ -76,7 +59,7 @@ workflow {
         = RecalibrateBasesInReadGroup(\
             sampleReadGroupAndIntervalPairs,\
             referenceSequenceDictionary,\
-            igenomesReferenceSequenceFasta,\
+            referenceSequenceFasta,\
             referenceSequenceIndex)
 
     //  group and merge recalibrated bam files for each sample  //

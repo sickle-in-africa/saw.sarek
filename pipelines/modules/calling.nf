@@ -24,8 +24,7 @@ process CallVariantsWithGatk {
     //when: 'haplotypecaller' in tools
 
     script:
-    //javaOptions = "-Xmx${task.memory.toGiga()}g -Xms6000m -XX:GCTimeLimit=50 -XX:GCHeapFreeLimit=10"
-    javaOptions = ""
+    javaOptions = params.haplotypeCallerJavaOptions
     intervalsOptions = params.no_intervals ? "" : "-L ${intervalBed}"
     dbsnpOptions = isChannelActive(dbsnp) ? "--D ${dbsnp}" : ""
     """
@@ -249,10 +248,8 @@ process MergeVariantSetsForSample {
     //when: ('haplotypecaller' in tools || 'mutect2' in tools || 'freebayes' in tools)
 
     script:
-    if (variantCaller == 'HaplotypeCallerGVCF')
-        outputFile = "HaplotypeCaller_${idSample}.g.vcf"
-    else
-        outputFile = "${variantCaller}_${idSample}.vcf"
+    variantCaller = variantCaller[0]
+    outputFile = "${variantCaller}_${idSample}.vcf"
     options = params.target_bed ? "-t ${targetBED}" : ""
     intervalsOptions = params.no_intervals ? "-n" : ""
     """
