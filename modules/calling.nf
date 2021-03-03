@@ -24,7 +24,7 @@ process CallVariantsWithGatk {
     //when: 'haplotypecaller' in tools
 
     script:
-    javaOptions = params.haplotypeCallerJavaOptions
+    javaOptions = (params.profile == 'chpc') ? "-Xmx${task.memory.toGiga()}g -Xms6000m -XX:GCTimeLimit=50 -XX:GCHeapFreeLimit=10" : ""
     intervalsOptions = params.no_intervals ? "" : "-L ${intervalBed}"
     dbsnpOptions = isChannelActive(dbsnp) ? "--D ${dbsnp}" : ""
     """
