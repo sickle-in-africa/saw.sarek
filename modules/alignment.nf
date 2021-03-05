@@ -82,6 +82,7 @@ process GetIndexOfAlignedSampleReadGroup {
 
 process MarkDuplicatesInSampleReadGroup {
     label 'cpus_16'
+    label 'withGatkContainer'
 
     tag "${idPatient}-${idSample}"
 

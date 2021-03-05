@@ -7,6 +7,7 @@ include {
 process CallVariantsWithGatk {
     label 'memory_singleCPU_task_sq'
     label 'cpus_2'
+    label 'withGatkContainer'
 
     tag "${idSample}-${intervalBed.baseName}"
 
@@ -40,6 +41,8 @@ process CallVariantsWithGatk {
 }
 
 process GenotypeVariantsFromGatk {
+    label 'withGatkContainer'
+
     tag "${idSample}-${intervalBed.baseName}"
 
     input:
