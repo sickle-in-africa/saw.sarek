@@ -1,0 +1,25 @@
+I"¤<p>Epidemiology is the science that informs public health for people all over the world. It is key for governments designing evidence-based legislation to protect their populations against disease, natural disaster, or lifestyle choice. In this module we will cover the basic concepts and definitions used in epidemiology. We will look at how epidemiologists can help African populations with Sickle Cell Disease through real world case studies, and we will see some basic mathematical methods used in the field. Along the way we will point to the areas in which big data skills might be necessary.</p>
+
+<p>By the end of this module you should be able to:</p>
+<ol>
+  <li>define basic concepts in Epidemiology;</li>
+  <li>describe some case studies relevant to Epidemiology applied to Sickle Cell Disease in Africa;</li>
+  <li>calculate basic Epidemiology measures (like cumulative incidence) for given scenarios;</li>
+  <li>and summarise the most important study designs used in Epidemiology.</li>
+</ol>
+
+<p>This is an introductory core module for the course <strong>Big Data Epidemiology</strong> and is a requirement for all course participants.</p>
+
+<blockquote class="prereq">
+  <h2 id="prerequisites">Prerequisites</h2>
+  <p>To complete this module you need a familiarity with Sickle Cell Disease. In addition, please read the following short articles in preparation for the module lessons:</p>
+  <ol>
+    <li><a href="https://www.nature.com/articles/s41467-018-04243-3">Epidemiology is a science of high importance</a></li>
+    <li><a href="https://www.thelancet.com/journals/lanhae/article/PIIS2352-3026(19)30111-5/fulltext">Sickle Cell Disease: a new era</a></li>
+    <li><a href="https://bmjopen.bmj.com/content/9/9/e030279">Reconceptualising precision public health</a></li>
+  </ol>
+</blockquote>
+
+<h2 id="credits">Credits</h2>
+<p>We extend our gratitude to the Software Carpentry team who designed the website template that these pages use.</p>
+:ET
