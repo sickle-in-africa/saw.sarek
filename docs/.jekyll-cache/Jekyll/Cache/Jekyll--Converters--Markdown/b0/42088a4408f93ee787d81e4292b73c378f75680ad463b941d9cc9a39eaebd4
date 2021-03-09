@@ -1,0 +1,67 @@
+I"�<h2 id="glossary">Glossary</h2>
+
+<dl>
+  <dt id="public-health">public health</dt>
+  <dd>a multidisciplinary field whose goal is to promote the health of the population through organised community efforts.</dd>
+  <dt id="epidemiology">epidemiology</dt>
+  <dd>the study of the distribution and determinants of disease frequency in human populations and the application of this study to control health problems.</dd>
+  <dt id="population">population</dt>
+  <dd>a set of people that share one or more common characteristics, such as gender, place of residence, age, or use of certain medical services.</dd>
+  <dt id="fixed-population">fixed population</dt>
+  <dd>A <a href="#population">population</a> whose membership is permanent.
+See also: <a href="#dynamic-population">dynamic population</a>.</dd>
+  <dt id="dynamic-population">dynamic population</dt>
+  <dd>a <a href="#population">population</a> who’s members can change.
+See also: <a href="#fixed-population">fixed population</a>.</dd>
+  <dt id="sample">sample</dt>
+  <dd>(of a <a href="#population">population</a>) a subset of the group where each member in the sample is chosen at random from the population, so that the statistics of the sample are suitably close to the statistics of the population.</dd>
+  <dt id="disease-frequency">disease frequency</dt>
+  <dd>quantification of how often a disease arises in a population.</dd>
+  <dt id="disease-distribution">disease distribution</dt>
+  <dd>the analysis of disease patterns according to the characteristics of person, place, and time, in other words, who is getting the disease, where it is occurring, and how it is changing over time.</dd>
+  <dt id="disease-determinants">disease determinants</dt>
+  <dd>factors that bring about a change in a person’s health or make a difference in a person’s health.</dd>
+  <dt id="catchment-population">catchment population</dt>
+  <dd>of a health facility is a <a href="#population">population</a> that consists of the people who use the facility’s services.</dd>
+  <dt id="incidence">incidence</dt>
+  <dd>the proportion of a candidate <a href="#population">population</a> that becomes diseased over a specified period of time.</dd>
+  <dt id="prevalence">prevalence</dt>
+  <dd>the proportion of the total population that is diseased.
+See also: <a href="#incidence">incidence</a>.</dd>
+  <dt id="point-prevalence">point prevalence</dt>
+  <dd>the proportion of the population that is diseased at a single point in time.
+See also: <a href="#prevalence">prevalence</a>, <a href="#period-prevalence">period prevalence</a>.</dd>
+  <dt id="period-prevalence">period prevalence</dt>
+  <dd>the proportion of the population that is diseased during a specified duration of time.
+See also:  <a href="#prevalence">prevalence</a>, <a href="#point-prevalence">point prevalence</a>.</dd>
+  <dt id="exposure">exposure</dt>
+  <dd>a characteristic for which people are compared in an epidemiological study.</dd>
+  <dt id="absolute-comparisons">absolute comparisons</dt>
+  <dd>the subtracted measures of disease comparisons. Also called risk difference rate difference, incidence rate difference, cumulative incidence difference, and prevalence difference.</dd>
+  <dt id="relative-comparisons">relative comparisons</dt>
+  <dd>the divided measures of disease comparisons.</dd>
+</dl>
+
+<h2 id="equations">Equations</h2>
+
+<h2 id="further-reading">Further reading</h2>
+<p>This module has used the following textbook as the primary source <a href="https://www.amazon.com/Essentials-Epidemiology-Public-Health-Aschengrau/dp/1284028917">Essentials of Epidemiology</a> and we reccomed it for in-depth reading on the subject. Other good textbooks on epidemiology include:</p>
+<ul>
+  <li><a href="https://www.amazon.com/Gordis-Epidemiology-David-Celentano-ScD/dp/0323552293">Gordis Epidemiology</a>: the definitive textbook on Epidemiology, now in its 6th edition.</li>
+  <li><a href="https://www.amazon.com/Epidemiology-Matters-Introduction-Methodological-Foundations/dp/0199331243">Epidemiology Matters</a>: a new book that offers a different approach for learning based on competencies.</li>
+  <li><a href="https://www.amazon.com/Applied-Epidemiology-Practice-Ross-Brownson/dp/0195187415">Applied Epidemiology</a>: a practical approach.</li>
+</ul>
+
+<h3 id="epidemiology-and-big-data">Epidemiology and Big Data</h3>
+<ul>
+  <li><a href="https://pubmed.ncbi.nlm.nih.gov/29623670/">Epidemiology in Wonderland</a></li>
+  <li><a href="https://science.sciencemag.org/content/346/6213/1054.long">Big data meets public health</a></li>
+  <li><a href="https://journals.lww.com/epidem/Fulltext/2015/05000/Commentary__Epidemiology_in_the_Era_of_Big_Data.14.aspx">Epidemiology in the era of big data</a></li>
+  <li><a href="https://pubmed.ncbi.nlm.nih.gov/25976024/">Charting a future for epidemiologic training</a></li>
+</ul>
+
+<h3 id="precision-public-health">Precision public health</h3>
+<ul>
+  <li><a href="https://blogs.cdc.gov/genomics/2018/05/15/precision-public-health-2/">Precision Public Health: What Is It?</a></li>
+</ul>
+:ET
