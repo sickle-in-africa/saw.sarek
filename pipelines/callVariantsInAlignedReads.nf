@@ -152,8 +152,6 @@ workflow {
     sampleGroupsOfVariantSetsFromFreeBayes\
         = groupByPatientSample(variantSetsFromFreebayes)
 
-    sampleGroupsOfVariantSetsFromFreeBayes | view()
-
     sampleGroupsOfVariantSets\
         = sampleGroupsOfVariantSetsFromGatk.mix(
             sampleGroupsOfVariantSetsFromFreeBayes)
