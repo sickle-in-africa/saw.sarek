@@ -14,19 +14,12 @@ process GetIntervalsPlan {
         path(_intervalsList_)
 
     output:
-        path(outputFile), includeInputs: true
+        path("${fastaFai.baseName}.bed")
 
     script:
-        if ( isChannelActive(_intervalsList_) == true )
-            outputFile = _intervalsList_
-            """
-            : # do nothing
-            """
-        else
-            outputFile = "${fastaFai.baseName}.bed"
-            """
-            awk -v FS='\t' -v OFS='\t' '{ print \$1, \"0\", \$2 }' ${fastaFai} > ${fastaFai.baseName}.bed
-            """ 
+        """
+        awk -v FS='\t' -v OFS='\t' '{ print \$1, \"0\", \$2 }' ${fastaFai} > ${fastaFai.baseName}.bed
+        """ 
 }
 
 process GetIntervals {
