@@ -76,8 +76,8 @@ workflow {
         = SplitIntervalList(referenceIntervalList)\
         .flatten()
 
-    intervalsWithDurations\
-        = addDurationToInterval(intervals)
+    intervalListsWithDurations\
+        = addDurationToInterval(intervalLists)
 
     sampleReadGroupAndIntervalListPairs\
         = sampleReadGroups.combine(intervalListsWithDurations)
