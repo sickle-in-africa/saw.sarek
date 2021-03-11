@@ -6,9 +6,23 @@
  *      This script prepares the user's workspace for recalibrating the aligned
  *      sample read groups (bam files) by generating the necessary base quality
  *      score recalibration reports with gatk. To speed up the process, we first
- *      create intervals and then the reportss are generated in parallel across 
+ *      create intervals and then the reports are generated in parallel across 
  *      each interval. After generating the reports, we merge them across 
  *      intervals for each sample. 
+ *
+ *      Note on intervals and interval lists
+ *      ------------------------------------
+ *      Here we define an *interval list* as a single file containing 
+ *      intervals of a reference genome sequence (in position coordinates, for 
+ *      example GRCh37). A reference interval list is a file containing a set
+ *      of intervals that partition the callable parts of the reference. 
+ *      This script checks to see if a reference interval list was supplied 
+ *      by the user (e.g. in an igenomes repo) and if not it builds one from
+ *      the reference fasta index file.
+ *
+ *      For parallelization, the reference interval list is split up into many 
+ *      smaller interval lists (actually one interval per list/file), and then
+ *      reports are build on these interval lists in parallel. 
  *
  *****************************************************************************/
 

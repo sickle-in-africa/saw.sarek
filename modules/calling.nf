@@ -268,7 +268,7 @@ def branchIntoGenotypingOrNoGenotypingChannels(variantSets) {
     return [result.genotype, result.noGenotype]
 }
 
-def removeIntervals(variantSetAndIntervalPairs) {
+def removeIntervalList(variantSetAndIntervalPairs) {
     return variantSetAndIntervalPairs.map {
         idPatient, idSample, variantCaller, intervalBed, variantSet\
         -> [idPatient, idSample, variantCaller, variantSet]

@@ -3,11 +3,11 @@
  *  VARIANT CALLING
  *  ===============
  *
- *      This script takes in *aligned sample read groups* (single files of reads
- *      such that one read file corresponds to one and only one patient sample)
- *      in the bam format, creates intervals (one interval per interval/bed 
- *      file) and then calls variants in the sample read groups for a range of 
- *      variant callers. 
+ *      This script takes in *aligned sample read groups* (single files of 
+ *      reads, such that one read file corresponds to one and only one patient 
+ *      sample) in the bam format, creates intervals (one interval per 
+ *      interval/bed file) and then calls variants in the sample read groups 
+ *      for a range of variant callers. 
  *      
  *      The callers are either for snvs and small indels:
  *          + gatk 4 Haplotype caller
@@ -17,11 +17,25 @@
  *          + manta
  *          + tiddit
  *
- *      Calling variants on intervals is helpful for speeding up the process, by
- *      parralellising over each interval, however it is only possible for 
+ *      Calling variants on intervals is helpful for speeding up the process, 
+ *      by parralellising over each interval, however it is only possible for 
  *      the gatk and freebayes callers. Once variant calling is done, all the 
  *      variant sets corresponding to each sample are merged across intervals 
- *      (where intervals were used) and the sample variant sets are output.  
+ *      (where intervals were used) and the sample variant sets are output. 
+ *
+ *      Note on intervals and interval lists
+ *      ------------------------------------
+ *      Here we define an *interval list* as a single file containing 
+ *      intervals of a reference genome sequence (in position coordinates, for 
+ *      example GRCh37). A reference interval list is a file containing a set
+ *      of intervals that partition the callable parts of the reference. 
+ *      This script checks to see if a reference interval list was supplied 
+ *      by the user (e.g. in an igenomes repo) and if not it builds one from
+ *      the reference fasta index file.
+ *
+ *      For parallelization, the reference interval list is split up into many 
+ *      smaller interval lists (actually one interval per list/file), and then
+ *      variants are called on these interval lists in parallel. 
  *
  ******************************************************************************/
 
@@ -37,8 +51,8 @@ include {
 } from "${params.modulesDir}/inputs.nf"
 
 include {
-    GetIntervalsPlan;
-    GetIntervals;
+    BuildReferenceIntervalList;
+    SplitIntervalList;
     addDurationToInterval
 } from "${params.modulesDir}/intervals.nf"
 
@@ -51,7 +65,7 @@ include {
     CallVariantsWithFreebayes;
     MergeVariantSetsForSample;
     branchIntoGenotypingOrNoGenotypingChannels;
-    removeIntervals
+    removeIntervalList
 } from "${params.modulesDir}/calling.nf"
 
 
@@ -63,7 +77,7 @@ workflow {
      referenceSequenceIndex,
      dbsnp,
      dbsnpIndex,
-     intervalsPlanFromInput,
+     referenceIntervalListFromInput,
      targetIntervalFromInput,
      __genderMap__,
      __statusMap__)
@@ -73,24 +87,29 @@ workflow {
 
    //  set up intervals for calling variants in parallel  //
 
-    intervalsPlan\
-        = GetIntervalsPlan(
+    referenceIntervalListFromIndex\
+        = BuildReferenceIntervalList(
             referenceSequenceIndex,
-            intervalsPlanFromInput)
+            referenceIntervalListFromInput.ifEmpty('empty'))
 
-    intervals = GetIntervals(intervalsPlan).flatten()
+    referenceIntervalList\
+        = referenceIntervalListFromInput.mix(referenceIntervalListFromIndex)
 
-    intervalsWithDurations\
-        = addDurationToInterval(intervals)
+    intervalLists\
+        = SplitIntervalList(referenceIntervalList)\
+        .flatten()
 
-    sampleReadGroupAndIntervalPairs\
-        = sampleReadGroups.combine(intervalsWithDurations)
+    intervalListsWithDurations\
+        = addDurationToInterval(intervalLists)
+
+    sampleReadGroupAndIntervalListPairs\
+        = sampleReadGroups.combine(intervalListsWithDurations)
 
     //  call variants  //
 
     variantSetAndIntervalPairsFromGatk\
         = CallVariantsWithGatk(\
-            sampleReadGroupAndIntervalPairs,\
+            sampleReadGroupAndIntervalListPairs,\
             dbsnp,
             dbsnpIndex,\
             referenceSequenceDictionary,\
@@ -111,11 +130,11 @@ workflow {
             referenceSequenceFasta,\
             referenceSequenceIndex)
 
-    variantSetAndIntervalPairsFromGatk\
+    variantSetAndIntervalListPairsFromGatk\
         = genotyped.mix(noGenotyping)
 
     variantSetsFromGatk\
-        = removeIntervals(variantSetAndIntervalPairsFromGatk)    
+        = removeIntervalList(variantSetAndIntervalListPairsFromGatk)    
 
     (sampleVariantSetsFromStrelka)\
         = CallVariantsWithStrelka(\
@@ -140,7 +159,7 @@ workflow {
 
     (variantSetsFromFreebayes)\
         = CallVariantsWithFreebayes(\
-            sampleReadGroupAndIntervalPairs,\
+            sampleReadGroupAndIntervalListPairs,\
             referenceSequenceFasta,\
             softwareVersions)
 

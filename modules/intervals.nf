@@ -3,7 +3,7 @@ include {
     isChannelActive
 } from "${params.modulesDir}/sarek.nf"
 
-process GetIntervalsPlan {
+process BuildReferenceIntervalList {
     tag "${fastaFai}"
 
     publishDir params.outdir, mode: params.publish_dir_mode,
@@ -11,10 +11,13 @@ process GetIntervalsPlan {
 
     input:
         path(fastaFai)
-        path(_intervalsList_)
+        val(referenceIntervalListFromInput)
 
     output:
         path("${fastaFai.baseName}.bed")
+
+    when:
+        referenceIntervalListFromInput == 'empty'
 
     script:
         """
@@ -22,7 +25,7 @@ process GetIntervalsPlan {
         """ 
 }
 
-process GetIntervals {
+process SplitIntervalList {
     tag "${intervals}"
 
     input:
