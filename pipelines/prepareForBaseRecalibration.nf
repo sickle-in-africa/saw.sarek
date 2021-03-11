@@ -35,8 +35,8 @@ include {
 } from "${params.modulesDir}/inputs.nf"
 
 include {
-    GetIntervalsPlan;
-    GetIntervals;
+    BuildReferenceIntervalList;
+    SplitIntervalList;
     addDurationToInterval
 } from "${params.modulesDir}/intervals.nf"
 
@@ -55,7 +55,7 @@ workflow {
      referenceSequenceIndex,
      dbsnp,
      dbsnpIndex,
-     intervalsPlanFromInput,
+     referenceIntervalListFromInput,
      knownIndels,
      knownIndelsIndex,
      __genderMap__,
@@ -64,24 +64,29 @@ workflow {
 
     //  set up intervals for recalibrating bases in parallel  //
 
-    intervalsPlan\
-        = GetIntervalsPlan(\
+    referenceIntervalListFromIndex\
+        = BuildReferenceIntervalList(\
             referenceSequenceIndex,\
-            intervalsPlanFromInput)
+            referenceIntervalListFromInput)
 
-    intervals = GetIntervals(intervalsPlan).flatten()
+    referenceIntervalList\
+        = referenceIntervalListFromInput.mix(referenceIntervalListFromIndex)
+
+    intervalLists\
+        = SplitIntervalList(referenceIntervalList)\
+        .flatten()
 
     intervalsWithDurations\
         = addDurationToInterval(intervals)
 
-    sampleReadGroupAndIntervalPairs\
-        = sampleReadGroups.combine(intervalsWithDurations)
+    sampleReadGroupAndIntervalListPairs\
+        = sampleReadGroups.combine(intervalListsWithDurations)
 
     //  create recalibration reports  //
 
     baseRecalibrationReports\
         = GetBaseRecalibrationReport(\
-            sampleReadGroupAndIntervalPairs,\
+            sampleReadGroupAndIntervalListPairs,\
             dbsnp,\
             dbsnpIndex,\
             referenceSequenceFasta,\
