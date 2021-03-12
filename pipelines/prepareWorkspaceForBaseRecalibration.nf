@@ -31,7 +31,7 @@ nextflow.enable.dsl=2
 include { groupByPatientSample } from "${params.modulesDir}/sarek.nf"
 
 include {
-    initializeInputChannelsForRecalibration
+    initializeInputChannelsForPreparation
 } from "${params.modulesDir}/inputs.nf"
 
 include {
@@ -67,7 +67,7 @@ workflow {
     referenceIntervalListFromIndex\
         = BuildReferenceIntervalList(\
             referenceSequenceIndex,\
-            referenceIntervalListFromInput)
+            referenceIntervalListFromInput.ifEmpty('empty'))
 
     referenceIntervalList\
         = referenceIntervalListFromInput.mix(referenceIntervalListFromIndex)

@@ -57,7 +57,7 @@ workflow {
      referenceSequenceIndex,
      dbsnp,
      dbsnpIndex,
-     intervalsPlanFromInput,
+     referenceIntervalListFromInput,
      knownIndels,
      knownIndelsIndex,
      __genderMap__,
@@ -69,7 +69,7 @@ workflow {
     referenceIntervalListFromIndex\
         = BuildReferenceIntervalList(\
             referenceSequenceIndex,\
-            intervalsPlanFromInput)
+            referenceIntervalListFromInput.ifEmpty('empty'))
 
     referenceIntervalList\
         = referenceIntervalListFromInput.mix(referenceIntervalListFromIndex)
@@ -86,7 +86,7 @@ workflow {
 
     //  recalibrate aligned sample reads in parallel over intervals  //
 
-    (readGroupsRecalibrated)\
+    readGroupsRecalibrated\
         = RecalibrateBasesInReadGroup(\
             sampleReadGroupAndIntervalListPairs,\
             referenceSequenceDictionary,\

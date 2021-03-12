@@ -4,6 +4,7 @@ include {
 
 process GetBaseRecalibrationReport {
     label 'cpus_1'
+    label 'withGatkContainer'
 
     tag "${idPatient}-${idSample}-${intervalBed.baseName}"
 
@@ -45,6 +46,7 @@ process GetBaseRecalibrationReport {
 process MergeBaseRecalibrationReportsForSample {
     label 'memory_singleCPU_2_task'
     label 'cpus_2'
+    label 'withGatkContainer'
 
     tag "${idPatient}-${idSample}"
 
@@ -75,6 +77,7 @@ process MergeBaseRecalibrationReportsForSample {
 process RecalibrateBasesInReadGroup {
     label 'memory_singleCPU_2_task'
     label 'cpus_2'
+    label 'withGatkContainer'
 
     tag "${idPatient}-${idSample}-${intervalBed.baseName}"
 
