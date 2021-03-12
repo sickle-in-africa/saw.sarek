@@ -134,7 +134,7 @@ workflow {
         = genotyped.mix(noGenotyping)
 
     variantSetsFromGatk\
-        = removeIntervalList(variantSetAndIntervalListPairsFromGatk)    
+        = removeIntervalList(variantSetAndIntervalListPairsFromGatk)
 
     (sampleVariantSetsFromStrelka)\
         = CallVariantsWithStrelka(\
@@ -142,14 +142,14 @@ workflow {
             referenceSequenceFasta,\
             referenceSequenceIndex,\
             targetIntervalFromInput)
-
+/*
     (sampleVariantSetsFromManta)\
         = CallVariantsWithManta(\
             sampleReadGroups,\
             referenceSequenceFasta,\
             referenceSequenceIndex,\
             targetIntervalFromInput)
-
+*/
     (sampleVariantSetsFromTiddit,\
      tidditOut)\
         = CallVariantsWithTiddit(\
@@ -184,7 +184,7 @@ workflow {
     sampleVariantSets\
         = sampleVariantSetsFromGatkAndFreebayes.mix(
             sampleVariantSetsFromStrelka,
-            sampleVariantSetsFromManta,
+            //sampleVariantSetsFromManta,
             sampleVariantSetsFromTiddit)
 
     /**/
