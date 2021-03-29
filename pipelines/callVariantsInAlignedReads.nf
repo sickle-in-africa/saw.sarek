@@ -65,7 +65,8 @@ include {
     CallVariantsWithFreebayes;
     MergeVariantSetsForSample;
     branchIntoGenotypingOrNoGenotypingChannels;
-    removeIntervalList
+    removeIntervalList;
+    writeInputsForNextStep
 } from "${params.modulesDir}/calling.nf"
 
 
@@ -108,12 +109,12 @@ workflow {
     //  call variants  //
 
     variantSetAndIntervalPairsFromGatk\
-        = CallVariantsWithGatk(\
-            sampleReadGroupAndIntervalListPairs,\
+        = CallVariantsWithGatk(
+            sampleReadGroupAndIntervalListPairs,
             dbsnp,
-            dbsnpIndex,\
-            referenceSequenceDictionary,\
-            referenceSequenceFasta,\
+            dbsnpIndex,
+            referenceSequenceDictionary,
+            referenceSequenceFasta,
             referenceSequenceIndex)
 
     (forGenotyping,\
@@ -140,16 +141,14 @@ workflow {
         = CallVariantsWithStrelka(\
             sampleReadGroups,\
             referenceSequenceFasta,\
-            referenceSequenceIndex,\
-            targetIntervalFromInput)
-/*
+            referenceSequenceIndex)
+
     (sampleVariantSetsFromManta)\
         = CallVariantsWithManta(\
             sampleReadGroups,\
             referenceSequenceFasta,\
-            referenceSequenceIndex,\
-            targetIntervalFromInput)
-*/
+            referenceSequenceIndex)
+
     (sampleVariantSetsFromTiddit,\
      tidditOut)\
         = CallVariantsWithTiddit(\
@@ -178,14 +177,18 @@ workflow {
     sampleVariantSetsFromGatkAndFreebayes\
         = MergeVariantSetsForSample(
             sampleGroupsOfVariantSets,
-            referenceSequenceIndex,
-            targetIntervalFromInput)
+            referenceSequenceIndex)
 
     sampleVariantSets\
         = sampleVariantSetsFromGatkAndFreebayes.mix(
             sampleVariantSetsFromStrelka,
-            //sampleVariantSetsFromManta,
+            sampleVariantSetsFromManta,
             sampleVariantSetsFromTiddit)
+
+    writeInputsForNextStep(
+        sampleVariantSets,
+        __genderMap__,
+        __statusMap__)
 
     /**/
 

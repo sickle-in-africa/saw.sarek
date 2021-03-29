@@ -814,16 +814,20 @@ def printMutec2Warning(inputToolsList) {
   if ('mutect2' in inputToolsList && !(params.pon)) log.warn "[nf-core/sarek] Mutect2 was requested, but as no panel of normals were given, results will not be optimal"
 }
 
-def getInactiveChannel() {
-    return Channel.value(file(getInactiveChannelFlag()))
+def getInactiveChannel(label) {
+    return Channel.value(file(getInactiveChannelFlag(label)))
 }
 
 def isChannelActive(inputChannel) {
     return ( !(inputChannel =~ /NULL/) )
 }
 
-def getInactiveChannelFlag() {
-    return  "NULL-" + getRandomID(4)
+def isChannelEmpty(inputChannel) {
+    return ( inputChannel =~ /empty/ )
+}
+
+def getInactiveChannelFlag(label) {
+    return  "NULL-" + label
 }
 
 def getRandomID(length) {
