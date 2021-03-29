@@ -65,7 +65,7 @@ process GenotypeVariantsFromGatk {
     """
     gatk --java-options -Xmx${task.memory.toGiga()}g \
         IndexFeatureFile \
-        -I ${gvcf}
+        -F ${gvcf}
 
     gatk --java-options -Xmx${task.memory.toGiga()}g \
         GenotypeGVCFs \
