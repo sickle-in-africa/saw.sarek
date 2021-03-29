@@ -1,6 +1,7 @@
 include {
     hasExtension;
-    isChannelActive
+    isChannelActive;
+    isChannelEmpty
 } from "${params.modulesDir}/sarek.nf"
 
 
@@ -15,14 +16,12 @@ process CallVariantsWithGatk {
         tuple val(idPatient), val(idSample), file(bam), file(bai), file(intervalBed)
         path(dbsnp)
         path(dbsnpIndex)
-        file(dict)
-        file(fasta)
-        file(fastaFai)
+        path(dict)
+        path(fasta)
+        path(fastaFai)
 
     output:
         tuple val(idPatient), val(idSample), val("HaplotypeCallerGVCF"), file(intervalBed), file("${intervalBed.baseName}_${idSample}.g.vcf")
-
-    //when: 'haplotypecaller' in tools
 
     script:
     javaOptions = (params.profile == 'chpc') ? "-Xmx${task.memory.toGiga()}g -Xms6000m -XX:GCTimeLimit=50 -XX:GCHeapFreeLimit=10" : ""
@@ -89,7 +88,6 @@ process CallVariantsWithStrelka {
         tuple val(idPatient), val(idSample), file(bam), file(bai)
         file(fasta)
         file(fastaFai)
-        file(targetBED)
 
     output:
         tuple val(idPatient), val(idSample), val("Strelka"), file("*.vcf.gz"), file("*.vcf.gz.tbi")
@@ -97,14 +95,10 @@ process CallVariantsWithStrelka {
     //when: 'strelka' in tools
 
     script:
-    beforeScript = isChannelActive(targetBED) ? "bgzip --threads ${task.cpus} -c ${targetBED} > call_targets.bed.gz ; tabix call_targets.bed.gz" : ""
-    options = isChannelActive(targetBED) ? "--exome --callRegions call_targets.bed.gz" : ""
     """
-    ${beforeScript}
     configureStrelkaGermlineWorkflow.py \
         --bam ${bam} \
         --referenceFasta ${fasta} \
-        ${options} \
         --runDir Strelka
 
     python Strelka/runWorkflow.py -m local -j ${task.cpus}
@@ -133,7 +127,6 @@ process CallVariantsWithManta {
         tuple val(idPatient), val(idSample), file(bam), file(bai)
         file(fasta)
         file(fastaFai)
-        file(targetBED)
 
     output:
         tuple val(idPatient), val(idSample), val("Manta"), file("*.vcf.gz"), file("*.vcf.gz.tbi")
@@ -242,7 +235,6 @@ process MergeVariantSetsForSample {
     input:
         tuple val(idPatient), val(idSample), val(variantCaller), file(vcf)
         file(fastaFai)
-        file(targetBED)
 
     output:
     // we have this funny *_* pattern to avoid copying the raw calls to publishdir
@@ -273,4 +265,29 @@ def removeIntervalList(variantSetAndIntervalPairs) {
         idPatient, idSample, variantCaller, intervalBed, variantSet\
         -> [idPatient, idSample, variantCaller, variantSet]
     }
+}
+
+
+def writeInputsForNextStep(sampleVariantSets, genderMap, statusMap) {
+
+    sampleVariantSets
+        .map { idPatient, idSample, idCaller, vcfFile, vcfIndex ->
+            gender = genderMap[idPatient]
+            status = statusMap[idPatient, idSample]
+            vcf = "${params.outdir}/VariantCalling/${idSample}/${idCaller}/${vcfFile.baseName}"
+            tbi = "${params.outdir}/VariantCalling/${idSample}/${idCaller}/${vcfIndex.baseName}"
+            "${idPatient}\t${gender}\t${status}\t${idSample}\t${vcf}\t${tbi}\n"
+        }.collectFile(
+            name: 'raw_sample_variant_sets.tsv', sort: true, storeDir: "${params.outdir}/VariantCalling/TSV"
+        )
+
+    sampleVariantSets
+        .collectFile(storeDir: "${params.outdir}/VariantCalling/TSV") { idPatient, idSample, idCaller, vcfFile, vcfIndex ->
+            status = statusMap[idPatient, idSample]
+            gender = genderMap[idPatient]
+            vcf = "${params.outdir}/VariantCalling/${idSample}/${idCaller}/${vcfFile.baseName}"
+            tbi = "${params.outdir}/VariantCalling/${idSample}/${idCaller}/${vcfIndex.baseName}"
+            ["raw_sample_variant_sets_${idSample}.tsv", "${idPatient}\t${gender}\t${status}\t${idSample}\t${vcf}\t${tbi}\n"]
+    }
+
 }
