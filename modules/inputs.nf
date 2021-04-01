@@ -186,14 +186,14 @@ def initializeInputChannelsForPreparation() {
     checkBaseRecalibrationIsDesired()
 
     // Initialize channels with files based on params
-    _fasta_ = params.fasta ? Channel.value(file(params.fasta)) : getInactiveChannel()
-    _dict_ = params.dict ? Channel.value(file(params.dict)) : getInactiveChannel()
-    _fastaFai_ = params.fasta_fai ? Channel.value(file(params.fasta_fai)) : getInactiveChannel()
-    _dbsnp_ = params.dbsnp ? Channel.value(file(params.dbsnp)) : getInactiveChannel()
-    dbsnp_index = params.dbsnp_index ? Channel.value(file(params.dbsnp_index)) : getInactiveChannel()
+    _fasta_ = params.fasta ? Channel.value(file(params.fasta)) : getInactiveChannel('fasta')
+    _dict_ = params.dict ? Channel.value(file(params.dict)) : getInactiveChannel('dict')
+    _fastaFai_ = params.fasta_fai ? Channel.value(file(params.fasta_fai)) : getInactiveChannel('fastaFai')
+    _dbsnp_ = params.dbsnp ? Channel.value(file(params.dbsnp)) : getInactiveChannel('dbsnp')
+    dbsnp_index = params.dbsnp_index ? Channel.value(file(params.dbsnp_index)) : getInactiveChannel('dbsnpIndex')
     referenceIntervalList = params.intervals ? Channel.value(file(params.intervals)) : Channel.empty()
-    known_indels = params.known_indels ? Channel.value(file(params.known_indels)) : getInactiveChannel()
-    known_indels_index = params.known_indels_index ? Channel.value(file(params.known_indels_index)) : getInactiveChannel()
+    known_indels = params.known_indels ? Channel.value(file(params.known_indels)) : getInactiveChannel('knownIndels')
+    known_indels_index = params.known_indels_index ? Channel.value(file(params.known_indels_index)) : getInactiveChannel('knownIndelsIndex')
 
     inputSample = getInputSampleListAsChannel(tsvPath, step)
 
@@ -238,14 +238,14 @@ def initializeInputChannelsForRecalibration() {
     checkInputTsvPath(tsvPath)
 
     // Initialize channels with files based on params
-    _fasta_ = params.fasta ? Channel.value(file(params.fasta)) : getInactiveChannel()
-    _dict_ = params.dict ? Channel.value(file(params.dict)) : getInactiveChannel()
-    _fastaFai_ = params.fasta_fai ? Channel.value(file(params.fasta_fai)) : getInactiveChannel()
-    _dbsnp_ = params.dbsnp ? Channel.value(file(params.dbsnp)) : getInactiveChannel()
-    dbsnp_index = params.dbsnp_index ? Channel.value(file(params.dbsnp_index)) : getInactiveChannel()
+    _fasta_ = params.fasta ? Channel.value(file(params.fasta)) : getInactiveChannel('fasta')
+    _dict_ = params.dict ? Channel.value(file(params.dict)) : getInactiveChannel('dict')
+    _fastaFai_ = params.fasta_fai ? Channel.value(file(params.fasta_fai)) : getInactiveChannel('fastaFai')
+    _dbsnp_ = params.dbsnp ? Channel.value(file(params.dbsnp)) : getInactiveChannel('dbsnp')
+    dbsnp_index = params.dbsnp_index ? Channel.value(file(params.dbsnp_index)) : getInactiveChannel('dbsnpIndex')
     referenceIntervalList = params.intervals ? Channel.value(file(params.intervals)) : Channel.empty()
-    known_indels = params.known_indels ? Channel.value(file(params.known_indels)) : getInactiveChannel()
-    known_indels_index = params.known_indels_index ? Channel.value(file(params.known_indels_index)) : getInactiveChannel()
+    known_indels = params.known_indels ? Channel.value(file(params.known_indels)) : getInactiveChannel('knownIndels')
+    known_indels_index = params.known_indels_index ? Channel.value(file(params.known_indels_index)) : getInactiveChannel('knownIndelsIndex')
 
     inputSample = getInputSampleListAsChannel(tsvPath, step)
 

@@ -60,7 +60,7 @@ workflow {
      knownIndelsIndex,
      __genderMap__,
      __statusMap__)
-        = initializeInputChannelsForRecalibration()
+        = initializeInputChannelsForPreparation()
 
     //  set up intervals for recalibrating bases in parallel  //
 

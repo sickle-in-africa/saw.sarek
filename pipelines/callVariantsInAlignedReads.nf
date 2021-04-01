@@ -143,11 +143,11 @@ workflow {
             referenceSequenceFasta,\
             referenceSequenceIndex)
 
-    (sampleVariantSetsFromManta)\
-        = CallVariantsWithManta(\
-            sampleReadGroups,\
-            referenceSequenceFasta,\
-            referenceSequenceIndex)
+    //(sampleVariantSetsFromManta)\
+    //    = CallVariantsWithManta(\
+    //        sampleReadGroups,\
+    //        referenceSequenceFasta,\
+    //        referenceSequenceIndex)
 
     (sampleVariantSetsFromTiddit,\
      tidditOut)\
@@ -182,7 +182,7 @@ workflow {
     sampleVariantSets\
         = sampleVariantSetsFromGatkAndFreebayes.mix(
             sampleVariantSetsFromStrelka,
-            sampleVariantSetsFromManta,
+            //sampleVariantSetsFromManta,
             sampleVariantSetsFromTiddit)
 
     writeInputsForNextStep(
