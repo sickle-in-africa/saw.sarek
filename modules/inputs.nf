@@ -319,17 +319,7 @@ def initializeInputChannelsForVQSR() {
 
 def initializeInputChannelsForAnnotation() {
 
-    vcfToAnnotate = Channel.create()
-    vcfNoAnnotate = Channel.create()
-
-    if (tsvPath == []) {
-    // Sarek, by default, annotates all available vcfs that it can find in the VariantCalling directory
-    // Excluding vcfs from FreeBayes, and g.vcf from HaplotypeCaller
-    // Basically it's: results/VariantCalling/*/{HaplotypeCaller,Manta,Mutect2,SentieonDNAseq,SentieonDNAscope,SentieonTNscope,Strelka,TIDDIT}/*.vcf.gz
-    // Without *SmallIndels.vcf.gz from Manta, and *.genome.vcf.gz from Strelka
-    // The small snippet `vcf.minus(vcf.fileName)[-2]` catches idSample
-    // This field is used to output final annotated VCFs in the correct directory
-      Channel.empty().mix(
+    variantSets = Channel.empty().mix(
         Channel.fromPath("${params.outdir}/VariantCalling/*/HaplotypeCaller/*.vcf.gz")
           .flatten().map{vcf -> ['HaplotypeCaller', vcf.minus(vcf.fileName)[-2].toString(), vcf]},
         Channel.fromPath("${params.outdir}/VariantCalling/*/Manta/*[!candidate]SV.vcf.gz")
@@ -346,49 +336,15 @@ def initializeInputChannelsForAnnotation() {
           .flatten().map{vcf -> ['Strelka', vcf.minus(vcf.fileName)[-2].toString(), vcf]},
         Channel.fromPath("${params.outdir}/VariantCalling/*/TIDDIT/*.vcf.gz")
           .flatten().map{vcf -> ['TIDDIT', vcf.minus(vcf.fileName)[-2].toString(), vcf]}
-      ).choice(vcfToAnnotate, vcfNoAnnotate) {
-        annotate_tools == [] || (annotate_tools != [] && it[0] in annotate_tools) ? 0 : 1
-      }
-    } else if (annotate_tools == []) {
-    // Annotate user-submitted VCFs
-    // If user-submitted, Sarek assume that the idSample should be assumed automatically
-      vcfToAnnotate = Channel.fromPath(tsvPath)
-        .map{vcf -> ['userspecified', vcf.minus(vcf.fileName)[-2].toString(), vcf]}
-    } else exit 1, "specify only tools or files to annotate, not both"
+        )
 
-    vcfNoAnnotate.close()
-    vcfAnnotation = vcfAnnotation.mix(vcfToAnnotate)
-
-    (vcfSnpeff, vcfVep) = vcfAnnotation.into(2)
-
-    vcfVep = vcfVep.map {
-      variantCaller, idSample, vcf ->
-      [variantCaller, idSample, vcf, null]
-    }
-
-    ch_snpeff_cache = params.snpeff_cache ? Channel.value(file(params.snpeff_cache)) : "null"
-    ch_snpeff_db = params.snpeff_db ? Channel.value(params.snpeff_db) : "null"
-    ch_vep_cache_version = params.vep_cache_version ? Channel.value(params.vep_cache_version) : "null"
-    ch_vep_cache = params.vep_cache ? Channel.value(file(params.vep_cache)) : "null"
-
-    // Optional files, not defined within the params.genomes[params.genome] scope
-    ch_cadd_indels = params.cadd_indels ? Channel.value(file(params.cadd_indels)) : "null"
-    ch_cadd_indels_tbi = params.cadd_indels_tbi ? Channel.value(file(params.cadd_indels_tbi)) : "null"
-    ch_cadd_wg_snvs = params.cadd_wg_snvs ? Channel.value(file(params.cadd_wg_snvs)) : "null"
-    ch_cadd_wg_snvs_tbi = params.cadd_wg_snvs_tbi ? Channel.value(file(params.cadd_wg_snvs_tbi)) : "null"
+    ch_snpeff_cache = params.snpeff_cache ? Channel.value(file(params.snpeff_cache)) : getInactiveChannel('snpeff_cache')
+    ch_snpeff_db = params.snpeff_db ? Channel.value(params.snpeff_db) : getInactiveChannel('snpeff_db')
 
     return [
-        vcfSnpeff,
-        vcfVep,
+        variantSets,
         ch_snpeff_cache,
-        ch_snpeff_db,
-        ch_vep_cache_version,
-        ch_vep_cache,
-        ch_cadd_indels,
-        ch_cadd_indels_tbi,
-        ch_cadd_wg_snvs,
-        ch_cadd_wg_snvs_tbi]
-
+        ch_snpeff_db]
 }
 
 def initializeParamsScope(inputStep, inputToolsList) {

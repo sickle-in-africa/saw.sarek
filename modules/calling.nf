@@ -64,7 +64,7 @@ process GenotypeVariantsFromGatk {
     """
     gatk --java-options -Xmx${task.memory.toGiga()}g \
         IndexFeatureFile \
-        -F ${gvcf}
+        -I ${gvcf}
 
     gatk --java-options -Xmx${task.memory.toGiga()}g \
         GenotypeGVCFs \
@@ -91,8 +91,6 @@ process CallVariantsWithStrelka {
 
     output:
         tuple val(idPatient), val(idSample), val("Strelka"), file("*.vcf.gz"), file("*.vcf.gz.tbi")
-
-    //when: 'strelka' in tools
 
     script:
     """

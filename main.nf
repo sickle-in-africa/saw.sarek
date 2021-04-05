@@ -3578,6 +3578,27 @@ process Vcftools {
 
 vcftoolsReport = vcftoolsReport.dump(tag:'VCFTools')
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 /*
 ================================================================================
                                    ANNOTATION

@@ -108,7 +108,7 @@ workflow {
 
     //  call variants  //
 
-    variantSetAndIntervalPairsFromGatk\
+    variantSetAndIntervalListPairsFromGatkForGenotyping\
         = CallVariantsWithGatk(
             sampleReadGroupAndIntervalListPairs,
             dbsnp,
@@ -117,22 +117,14 @@ workflow {
             referenceSequenceFasta,
             referenceSequenceIndex)
 
-    (forGenotyping,\
-     noGenotyping)\
-        = branchIntoGenotypingOrNoGenotypingChannels(\
-            variantSetAndIntervalPairsFromGatk)
-
-    (genotyped)\
+    (variantSetAndIntervalListPairsFromGatk)\
         = GenotypeVariantsFromGatk(\
-            forGenotyping,\
+            variantSetAndIntervalListPairsFromGatkForGenotyping,\
             dbsnp,\
             dbsnpIndex,\
             referenceSequenceDictionary,\
             referenceSequenceFasta,\
             referenceSequenceIndex)
-
-    variantSetAndIntervalListPairsFromGatk\
-        = genotyped.mix(noGenotyping)
 
     variantSetsFromGatk\
         = removeIntervalList(variantSetAndIntervalListPairsFromGatk)
