@@ -338,6 +338,8 @@ def initializeInputChannelsForAnnotation() {
           .flatten().map{vcf -> ['TIDDIT', vcf.minus(vcf.fileName)[-2].toString(), vcf]}
         )
 
+    params.snpeff_db = params.genomes[params.genome].snpeff_db
+
     ch_snpeff_cache = params.snpeff_cache ? Channel.value(file(params.snpeff_cache)) : getInactiveChannel('snpeff_cache')
     ch_snpeff_db = params.snpeff_db ? Channel.value(params.snpeff_db) : getInactiveChannel('snpeff_db')
 
