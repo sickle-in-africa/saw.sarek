@@ -27,6 +27,7 @@ process AnnotateVariantsWithSnpeff {
     snpEff -Xmx${task.memory.toGiga()}g \
         ${snpeffDb} \
         -csvStats ${reducedVCF}_snpEff.csv \
+        -dataDir \${PWD}/${dataDir} \
         -canon \
         -v \
         ${vcf} \
