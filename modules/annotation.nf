@@ -21,13 +21,12 @@ process AnnotateVariantsWithSnpeff {
 
     script:
     reducedVCF = reduceVCF(vcf.fileName)
-    cache = (params.snpeff_cache && params.annotation_cache) ? "-dataDir \${PWD}/${dataDir}" : ""
     """
     snpEff -Xmx${task.memory.toGiga()}g \
         ${snpeffDb} \
         -csvStats ${reducedVCF}_snpEff.csv \
         -nodownload \
-        ${cache} \
+        -dataDir \${PWD}/${dataDir} \
         -canon \
         -v \
         ${vcf} \
