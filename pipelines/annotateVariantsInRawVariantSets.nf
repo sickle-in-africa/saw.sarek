@@ -20,6 +20,7 @@ include {
 workflow {
 
     (variantSetsFromInput,
+     snpeff_config,
      snpeff_cache,
      snpeff_db)\
         = initializeInputChannelsForAnnotation()
@@ -28,6 +29,7 @@ workflow {
      annotatedVariantSetsFromSnpeff)\
         = AnnotateVariantsWithSnpeff(
             variantSetsFromInput,
+            snpeff_config,
             snpeff_cache,
             snpeff_db)
 
