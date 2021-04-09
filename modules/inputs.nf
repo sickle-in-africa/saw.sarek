@@ -341,7 +341,7 @@ def initializeInputChannelsForAnnotation() {
     params.snpeff_db = params.genomes[params.genome].snpeff_db
     params.snpeff_cache = params.genomes[params.genome].snpeff_cache
 
-    ch_snpeff_cache = params.snpeff_cache ? Channel.value(path(params.snpeff_cache)) : getInactiveChannel('snpeff_cache')
+    ch_snpeff_cache = params.snpeff_cache ? Channel.value(file(params.snpeff_cache)) : getInactiveChannel('snpeff_cache')
     ch_snpeff_db = params.snpeff_db ? Channel.value(params.snpeff_db) : 'NULL'
 
     return [
