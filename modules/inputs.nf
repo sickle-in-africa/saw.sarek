@@ -340,15 +340,15 @@ def initializeInputChannelsForAnnotation() {
         )
 
     params.snpeff_db = params.genomes[params.genome].snpeff_db
-    params.snpeff_cache = params.genomes[params.genome].snpeff_cache
+    snpeff_cache = params.genomes[params.genome].snpeff_cache
 
-    params.vep_cache = params.genomes[params.genome].vep_cache
+    vep_cache = params.genomes[params.genome].vep_cache
     params.vep_cache_version = params.genomes[params.genome].vep_cache_version
 
     ch_snpeff_config = Channel.value(file("${params.sarekDir}/conf/snpEff.config"))
-    ch_snpeff_cache = params.snpeff_cache ? Channel.value(file(params.snpeff_cache)) : getInactiveChannel('snpeffCache')
+    ch_snpeff_cache = snpeff_cache ? Channel.value(file(snpeff_cache)) : getInactiveChannel('snpeffCache')
     ch_snpeff_db = params.snpeff_db ? Channel.value(params.snpeff_db) : getInactiveValueChannel()
-    ch_vep_cache = params.vep_cache ? Channel.value(file(params.vep_cache)) : getInactiveChannel('vepCache')
+    ch_vep_cache = vep_cache ? Channel.value(file(vep_cache)) : getInactiveChannel('vepCache')
     ch_vep_cache_version = params.vep_cache_version ? Channel.value(params.vep_cache_version) : getInactiveValueChannel()
 
     ch_cadd_cache = params.cadd_cache ? Channel.value(file(params.cadd_cache)) : getInactiveChannel('caddCache')

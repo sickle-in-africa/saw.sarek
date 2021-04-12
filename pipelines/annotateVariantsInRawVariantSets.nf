@@ -35,6 +35,11 @@ workflow {
      cadd_wg_snvs_tbi)\
         = initializeInputChannelsForAnnotation()
 
+    snpeff_cache | view()
+    vep_cache | view()
+
+    /*
+
     (snpeffReport,
      annotatedVariantSetsFromSnpeff)\
         = AnnotateVariantsWithSnpeff(
@@ -73,6 +78,8 @@ workflow {
     compressVCFOutVEP\
         = CompressVariantSetFromVep(
             vcfCompressVCFvep)
+
+    /**/
 
 }
 
