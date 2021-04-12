@@ -80,6 +80,7 @@ process AnnotateVariantsWithVep {
         file("${reducedVCF}_VEP.summary.html")
 
     script:
+    species = params.genomes[params.genome].species
     reducedVCF = reduceVCF(vcf.fileName)
     genome = params.genome == 'smallGRCh37' ? 'GRCh37' : params.genome
     dir_cache = " \${PWD}/${dataDir}"
@@ -92,7 +93,7 @@ process AnnotateVariantsWithVep {
         -i ${vcf} \
         -o ${reducedVCF}_VEP.ann.vcf \
         --assembly ${genome} \
-        --species ${params.species} \
+        --species ${species} \
         ${cadd} \
         ${genesplicer} \
         --cache \
@@ -136,6 +137,7 @@ process MergeVariantSetsFromVepAndSnpeff {
         file("${reducedVCF}_VEP.summary.html")
 
     script:
+    species = params.genomes[params.genome].species
     reducedVCF = reduceVCF(vcf.fileName)
     genome = params.genome == 'smallGRCh37' ? 'GRCh37' : params.genome
     dir_cache = " \${PWD}/${dataDir}"
@@ -148,7 +150,7 @@ process MergeVariantSetsFromVepAndSnpeff {
         -i ${vcf} \
         -o ${reducedVCF}_VEP.ann.vcf \
         --assembly ${genome} \
-        --species ${params.species} \
+        --species ${species} \
         ${cadd} \
         ${genesplicer} \
         --cache \
