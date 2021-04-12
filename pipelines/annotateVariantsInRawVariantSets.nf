@@ -43,7 +43,7 @@ workflow {
     (vepVCF,
      vepReport)\
         = AnnotateVariantsWithVep(
-            vcfVep,
+            variantSetsFromInput,
             ch_vep_cache,
             ch_vep_cache_version,
             ch_cadd_indels,
