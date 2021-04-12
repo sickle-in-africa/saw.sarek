@@ -25,7 +25,14 @@ workflow {
     (variantSetsFromInput,
      snpeff_config,
      snpeff_cache,
-     snpeff_db)\
+     snpeff_db,
+     vep_cache,
+     vep_cache_version,
+     cadd_cache,
+     cadd_indels,
+     cadd_indels_tbi,
+     cadd_wg_snvs,
+     cadd_wg_snvs_tbi)\
         = initializeInputChannelsForAnnotation()
 
     (snpeffReport,
@@ -44,22 +51,22 @@ workflow {
      vepReport)\
         = AnnotateVariantsWithVep(
             variantSetsFromInput,
-            ch_vep_cache,
-            ch_vep_cache_version,
-            ch_cadd_indels,
-            ch_cadd_indels_tbi,
-            ch_cadd_wg_snvs,
-            ch_cadd_wg_snvs_tbi)
+            vep_cache,
+            vep_cache_version,
+            cadd_indels,
+            cadd_indels_tbi,
+            cadd_wg_snvs,
+            cadd_wg_snvs_tbi)
 
     (vepVCFmerge, vepReportMerge)\
         = MergeVariantSetsFromVepAndSnpeff(
             compressVCFsnpEffOut,
-            ch_vep_cache,
-            ch_vep_cache_version,
-            ch_cadd_indels,
-            ch_cadd_indels_tbi,
-            ch_cadd_wg_snvs,
-            ch_cadd_wg_snvs_tbi)
+            vep_cache,
+            vep_cache_version,
+            cadd_indels,
+            cadd_indels_tbi,
+            cadd_wg_snvs,
+            cadd_wg_snvs_tbi)
 
     vcfCompressVCFvep = vepVCF.mix(vepVCFmerge)
 

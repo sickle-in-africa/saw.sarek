@@ -1,5 +1,6 @@
 include {
-    reduceVCF
+    reduceVCF;
+    isChannelActive
 } from "${params.modulesDir}/sarek.nf" 
 
 process AnnotateVariantsWithSnpeff {
@@ -81,9 +82,8 @@ process AnnotateVariantsWithVep {
     script:
     reducedVCF = reduceVCF(vcf.fileName)
     genome = params.genome == 'smallGRCh37' ? 'GRCh37' : params.genome
-
-    dir_cache = (params.vep_cache && params.annotation_cache) ? " \${PWD}/${dataDir}" : "/.vep"
-    cadd = (params.cadd_cache && params.cadd_wg_snvs && params.cadd_indels) ? "--plugin CADD,whole_genome_SNVs.tsv.gz,InDels.tsv.gz" : ""
+    dir_cache = " \${PWD}/${dataDir}"
+    cadd = (isChannelActive(cadd_InDels) && isChannelActive(cadd_WG_SNVs)) ? "--plugin CADD,whole_genome_SNVs.tsv.gz,InDels.tsv.gz" : ""
     genesplicer = params.genesplicer ? "--plugin GeneSplicer,/opt/conda/envs/nf-core-sarek-${workflow.manifest.version}/bin/genesplicer,/opt/conda/envs/nf-core-sarek-${workflow.manifest.version}/share/genesplicer-1.0-1/human,context=200,tmpdir=\$PWD/${reducedVCF}" : "--offline"
     """
     mkdir ${reducedVCF}
@@ -138,8 +138,8 @@ process MergeVariantSetsFromVepAndSnpeff {
     script:
     reducedVCF = reduceVCF(vcf.fileName)
     genome = params.genome == 'smallGRCh37' ? 'GRCh37' : params.genome
-    dir_cache = (params.vep_cache && params.annotation_cache) ? " \${PWD}/${dataDir}" : "/.vep"
-    cadd = (params.cadd_cache && params.cadd_wg_snvs && params.cadd_indels) ? "--plugin CADD,whole_genome_SNVs.tsv.gz,InDels.tsv.gz" : ""
+    dir_cache = " \${PWD}/${dataDir}"
+    cadd = (isChannelActive(cadd_InDels) && isChannelActive(cadd_WG_SNVs)) ? "--plugin CADD,whole_genome_SNVs.tsv.gz,InDels.tsv.gz" : ""
     genesplicer = params.genesplicer ? "--plugin GeneSplicer,/opt/conda/envs/nf-core-sarek-${workflow.manifest.version}/bin/genesplicer,/opt/conda/envs/nf-core-sarek-${workflow.manifest.version}/share/genesplicer-1.0-1/human,context=200,tmpdir=\$PWD/${reducedVCF}" : "--offline"
     """
     mkdir ${reducedVCF}
@@ -182,36 +182,6 @@ process CompressVariantSetFromVep {
     """
     bgzip < ${vcf} > ${vcf}.gz
     tabix ${vcf}.gz
-    """
-}
-
-process DownloadAnnotationCacheForVep {
-    tag {"${species}_${vep_cache_version}_${genome}"}
-    executor 'local'
-
-    publishDir "${params.vep_cache}/${species}", mode: params.publish_dir_mode
-
-    input:
-    val vep_cache_version
-    val species
-
-    output:
-    file("*")
-
-    script:
-    genome = params.genome
-    """
-    vep_install \
-    -a cf \
-    -c . \
-    -s ${species} \
-    -y ${genome} \
-    --CACHE_VERSION ${vep_cache_version} \
-    --CONVERT \
-    --NO_HTSLIB --NO_TEST --NO_BIOPERL --NO_UPDATE
-
-    mv ${species}/* .
-    rm -rf ${species}
     """
 }
 
