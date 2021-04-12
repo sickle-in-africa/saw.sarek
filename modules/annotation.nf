@@ -186,21 +186,22 @@ process CompressVariantSetFromVep {
 }
 
 process DownloadAnnotationCacheForVep {
-  tag {"${species}_${vep_cache_version}_${genome}"}
+    tag {"${species}_${vep_cache_version}_${genome}"}
+    executor 'local'
 
-  publishDir "${params.vep_cache}/${species}", mode: params.publish_dir_mode
+    publishDir "${params.vep_cache}/${species}", mode: params.publish_dir_mode
 
-  input:
+    input:
     val vep_cache_version
     val species
 
-  output:
+    output:
     file("*")
 
-  script:
-  genome = params.genome
-  """
-  vep_install \
+    script:
+    genome = params.genome
+    """
+    vep_install \
     -a cf \
     -c . \
     -s ${species} \
@@ -209,8 +210,8 @@ process DownloadAnnotationCacheForVep {
     --CONVERT \
     --NO_HTSLIB --NO_TEST --NO_BIOPERL --NO_UPDATE
 
-  mv ${species}/* .
-  rm -rf ${species}
-  """
+    mv ${species}/* .
+    rm -rf ${species}
+    """
 }
 
