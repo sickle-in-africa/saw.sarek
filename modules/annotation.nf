@@ -40,7 +40,7 @@ process AnnotateVariantsWithSnpeff {
 process CompressVariantSetFromSnpeff {
     tag "${idSample} - ${vcf}"
 
-    publishDir "${params.outdir}/Annotation/${idSample}/snpEff", mode: params.publish_dir_mode
+    publishDir "${params.outdir}/Annotation/${idSample}/snpEff", mode: 'copy'
 
     input:
         tuple val(variantCaller), val(idSample), file(vcf)
