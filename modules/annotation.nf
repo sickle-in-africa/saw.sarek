@@ -28,7 +28,6 @@ process AnnotateVariantsWithSnpeff {
         -csvStats ${reducedVCF}_snpEff.csv \
         -nodownload \
         -dataDir \${PWD}/${dataDir} \
-        -c ${snpEff_config}
         -canon \
         -v ${vcf} \
         > ${reducedVCF}_snpEff.ann.vcf
