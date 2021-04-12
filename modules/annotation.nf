@@ -87,6 +87,11 @@ process AnnotateVariantsWithVep {
     cadd = (isChannelActive(cadd_InDels) && isChannelActive(cadd_WG_SNVs)) ? "--plugin CADD,whole_genome_SNVs.tsv.gz,InDels.tsv.gz" : ""
     genesplicer = params.genesplicer ? "--plugin GeneSplicer,/opt/conda/envs/nf-core-sarek-${workflow.manifest.version}/bin/genesplicer,/opt/conda/envs/nf-core-sarek-${workflow.manifest.version}/share/genesplicer-1.0-1/human,context=200,tmpdir=\$PWD/${reducedVCF}" : "--offline"
     """
+    echo 'hello'
+    """
+
+    /*
+    """
     mkdir ${reducedVCF}
 
     vep \
@@ -110,6 +115,7 @@ process AnnotateVariantsWithVep {
 
     rm -rf ${reducedVCF}
     """
+    */
 }
 
 process MergeVariantSetsFromVepAndSnpeff {
