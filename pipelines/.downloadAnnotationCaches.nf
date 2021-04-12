@@ -29,6 +29,7 @@ workflow {
 
     params.vep_cache = params.genome ? params.genomes[params.genome].vep_cache : null
     params.vep_cache_version = params.genome ? params.genomes[params.genome].vep_cache_version : null
+    params.species = params.genomes[params.genome].species
 
     ch_vep_cache = params.vep_cache ? Channel.value(params.vep_cache) : getInactiveValueChannel()
     ch_vep_cache_version = params.vep_cache_version ? Channel.value(params.vep_cache_version) : getInactiveValueChannel()
