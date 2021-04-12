@@ -176,7 +176,7 @@ process CompressVariantSetFromVep {
         tuple val(variantCaller), val(idSample), file(vcf)
 
     output:
-        tupe val(variantCaller), val(idSample), file("*.vcf.gz"), file("*.vcf.gz.tbi")
+        tuple val(variantCaller), val(idSample), file("*.vcf.gz"), file("*.vcf.gz.tbi")
 
     script:
     """
