@@ -818,6 +818,10 @@ def getInactiveChannel(label) {
     return Channel.value(file(getInactiveChannelFlag(label)))
 }
 
+def getInactiveValueChannel() {
+    return Channel.value(getInactiveChannelFlag(''))
+}
+
 def isChannelActive(inputChannel) {
     return ( !(inputChannel =~ /NULL/) )
 }

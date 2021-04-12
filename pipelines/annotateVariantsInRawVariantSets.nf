@@ -13,7 +13,10 @@ include {
 
 include {
     AnnotateVariantsWithSnpeff;
-    CompressVariantSetFromSnpeff
+    CompressVariantSetFromSnpeff;
+    AnnotateVariantsWithVep;
+    MergeVariantSetsFromVepAndSnpeff;
+    CompressVariantSetFromVep
 } from "${params.modulesDir}/annotation.nf"
 
 
@@ -36,5 +39,33 @@ workflow {
     compressVCFsnpEffOut\
         = CompressVariantSetFromSnpeff(
             annotatedVariantSetsFromSnpeff)
+
+    (vepVCF,
+     vepReport)\
+        = AnnotateVariantsWithVep(
+            vcfVep,
+            ch_vep_cache,
+            ch_vep_cache_version,
+            ch_cadd_indels,
+            ch_cadd_indels_tbi,
+            ch_cadd_wg_snvs,
+            ch_cadd_wg_snvs_tbi)
+
+    (vepVCFmerge, vepReportMerge)\
+        = MergeVariantSetsFromVepAndSnpeff(
+            compressVCFsnpEffOut,
+            ch_vep_cache,
+            ch_vep_cache_version,
+            ch_cadd_indels,
+            ch_cadd_indels_tbi,
+            ch_cadd_wg_snvs,
+            ch_cadd_wg_snvs_tbi)
+
+    vcfCompressVCFvep = vepVCF.mix(vepVCFmerge)
+
+    compressVCFOutVEP\
+        = CompressVariantSetFromVep(
+            vcfCompressVCFvep)
+
 }
 
