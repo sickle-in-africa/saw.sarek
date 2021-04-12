@@ -56,7 +56,7 @@ process CompressVariantSetFromSnpeff {
 }
 
 process AnnotateVariantsWithVep {
-    label 'VEP'
+    //label 'VEP'
     label 'cpus_4'
 
     tag "${idSample} - ${variantCaller} - ${vcf}"
@@ -113,7 +113,7 @@ process AnnotateVariantsWithVep {
 }
 
 process MergeVariantSetsFromVepAndSnpeff {
-    label 'VEP'
+    //label 'VEP'
     label 'cpus_4'
 
     tag "${idSample} - ${variantCaller} - ${vcf}"
