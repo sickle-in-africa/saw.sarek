@@ -67,7 +67,7 @@ process AnnotateVariantsWithVep {
     }
 
     input:
-        tuple val(variantCaller), val(idSample), file(vcf), file(idx)
+        tuple val(variantCaller), val(idSample), file(vcf)
         file(dataDir)
         val cache_version
         file(cadd_InDels)
@@ -123,7 +123,7 @@ process MergeVariantSetsFromVepAndSnpeff {
     }
 
     input:
-        tuple val(variantCaller), val(idSample), file(vcf), file(idx)
+        tuple val(variantCaller), val(idSample), file(vcf)
         file(dataDir)
         val cache_version
         file(cadd_InDels)
