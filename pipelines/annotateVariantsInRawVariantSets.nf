@@ -3,8 +3,22 @@
  *  ANNOTATING VARIANTS IN VARIANT SETS
  *  ===================================
  *
+ *  In this pipeline we annotate variants from the variant calllers.
+ *  This step is applied after variant quality score recalibration
+ *  to avoid wasting time annotating variants that then do not pass
+ *  basic quality filters. 
  *
- ***************************************/
+ *  We use the following annotation tools:
+ *      + SnpEff
+ *      + VEP (Variant Effect Predictor)
+ *
+ *  We produce three different annotated vcf files as output:
+ *      + a SnpEff annotated file;
+ *      + a VEP annotated file;
+ *      + a VEP annotated file that uses input from the SnpEff 
+ *          annotated file as input.
+ *
+ ********************************************************************/
 nextflow.enable.dsl = 2
 
 include {
@@ -15,7 +29,7 @@ include {
     AnnotateVariantsWithSnpeff;
     CompressVariantSetFromSnpeff;
     AnnotateVariantsWithVep;
-    MergeVariantSetsFromVepAndSnpeff;
+    AnnotateVariantsWithVepAndSnpeff;
     CompressVariantSetFromVep
 } from "${params.modulesDir}/annotation.nf"
 
@@ -59,7 +73,7 @@ workflow {
             cadd_wg_snvs_tbi)
 
     (vepVCFmerge, vepReportMerge)\
-        = MergeVariantSetsFromVepAndSnpeff(
+        = AnnotateVariantsWithVepAndSnpeff(
             compressVCFsnpEffOut,
             vep_cache,
             vep_cache_version,

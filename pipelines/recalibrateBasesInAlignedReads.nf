@@ -46,7 +46,7 @@ include {
     RecalibrateBasesInReadGroup;
     MergeRecalibratedReadGroupsForSample;
     writeTsvFilesForRecalibratedBams
-} from "${params.modulesDir}/recalibration.nf"
+} from "${params.modulesDir}/baseRecalibration.nf"
 
 
 workflow {

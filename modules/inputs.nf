@@ -371,6 +371,19 @@ def initializeInputChannelsForAnnotation() {
         ch_cadd_wg_snvs_tbi]
 }
 
+def initializeInputChannelsForVariantRecalibration() {
+    variantSets = Channel.empty().mix(
+        Channel.fromPath("${params.outdir}/VariantCalling/*/HaplotypeCaller/*.vcf.gz")
+          .flatten().map{vcf -> ['HaplotypeCaller', vcf.minus(vcf.fileName)[-2].toString(), vcf]},
+       Channel.fromPath("${params.outdir}/VariantCalling/*/FreeBayes/*.vcf.gz")
+          .flatten().map{vcf -> ['FreeBayes', vcf.minus(vcf.fileName)[-2].toString(), vcf]},          
+        )
+
+    return [
+        variantSets]
+
+}
+
 def initializeParamsScope(inputStep, inputToolsList) {
   // Initialize each params in params.genomes, catch the command line first if it was defined
   // params.fasta has to be the first one

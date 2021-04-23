@@ -44,7 +44,7 @@ include {
     GetBaseRecalibrationReport;
     MergeBaseRecalibrationReportsForSample;
     writeTsvFilesForRecalibrationReports
-} from "${params.modulesDir}/recalibration.nf"
+} from "${params.modulesDir}/baseRecalibration.nf"
 
 
 workflow {

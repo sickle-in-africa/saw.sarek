@@ -112,8 +112,8 @@ process AnnotateVariantsWithVep {
     """
 }
 
-process MergeVariantSetsFromVepAndSnpeff {
-    //label 'VEP'
+process AnnotateVariantsWithVepAndSnpeff {
+
     label 'cpus_4'
 
     tag "${idSample} - ${variantCaller} - ${vcf}"
