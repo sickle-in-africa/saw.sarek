@@ -408,8 +408,8 @@ def initializeInputChannelsForVariantRecalibration() {
         onekg_snps_index,
         onekg_indels,
         onekg_indels_index,
-        onekg_indels,
-        onekg_indels_index]
+        onekg_omni,
+        onekg_omni_index]
 
 }
 
