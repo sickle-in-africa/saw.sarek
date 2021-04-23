@@ -12,11 +12,49 @@ include {
     initializeInputChannelsForVariantRecalibration
 } from "${params.modulesDir}/inputs.nf"
 
+include {
+    GetVariantRecalibrationReport;
+    RecalibrateVariantQualityScores
+} from "${params.modulesDir}/variantRecalibration.nf"
+
 workflow {
 
-    variantSetsFromInput\
+    (variantSetsFromInput,
+     referenceSequenceFasta,
+     referenceSequenceDictionary,
+     referenceSequenceIndex,
+     dbsnp,
+     dbsnpIndex,
+     hapmap,
+     hapmapIndex
+     onekgSnps,
+     onekgSnpsIndex,
+     onekgIndels,
+     onekgIndelsIndex,
+     onekgOmni,
+     onekgOmniIndex)\
         = initializeInputChannelsForVariantRecalibration()
 
 
-    variantSetsFromInput.dump(tag: 'variant sets')
+    variantRecalibrationReports\
+        = GetVariantRecalibrationReport(
+            referenceSequenceFasta,
+            referenceSequenceDictionary,
+            referenceSequenceIndex,
+            dbsnp,
+            dbsnpIndex,
+            hapmap,
+            hapmapIndex,
+            onekgSnps,
+            onekgSnpsIndex,
+            onekgIndels,
+            onekgIndelsIndex,
+            onekgOmni,
+            onekgOmniIndex)
+
+
+    RecalibrateVariantQualityScores(
+        variantSetsFromInput,
+        variantRecalibrationReports)
+
 }

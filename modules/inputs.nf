@@ -372,6 +372,7 @@ def initializeInputChannelsForAnnotation() {
 }
 
 def initializeInputChannelsForVariantRecalibration() {
+    
     variantSets = Channel.empty().mix(
         Channel.fromPath("${params.outdir}/VariantCalling/*/HaplotypeCaller/*.vcf.gz")
           .flatten().map{vcf -> ['HaplotypeCaller', vcf.minus(vcf.fileName)[-2].toString(), vcf]},
@@ -379,8 +380,36 @@ def initializeInputChannelsForVariantRecalibration() {
           .flatten().map{vcf -> ['FreeBayes', vcf.minus(vcf.fileName)[-2].toString(), vcf]},          
         )
 
+    _fasta_ = params.fasta ? Channel.value(file(params.genomes[params.genome].fasta)) : getInactiveChannel('fasta')
+    _dict_ = params.dict ? Channel.value(file(params.genomes[params.genome].dict)) : getInactiveChannel('dict')
+    _fastaFai_ = params.fasta_fai ? Channel.value(file(params.genomes[params.genome].fasta_fai)) : getInactiveChannel('fastaFai')
+    _dbsnp_ = params.dbsnp ? Channel.value(file(params.genomes[params.genome].dbsnp)) : getInactiveChannel('dbsnp')
+    dbsnp_index = params.dbsnp_index ? Channel.value(file(params.genomes[params.genome].dbsnp_index)) : getInactiveChannel('dbsnpIndex')
+    hapmap = Channel.value(file(params.genomes[params.genome].hapmap))
+    hapmap_index = Channel.value(file(params.genomes[params.genome].hapmap_index))
+    onekg_snps = Channel.value(file(params.genomes[params.genome].onekg_snps))
+    onekg_snps_index = Channel.value(file(params.genomes[params.genome].onekg_snps_index))
+    onekg_indels = Channel.value(file(params.genomes[params.genome].onekg_indels))
+    onekg_indels_index = Channel.value(file(params.genomes[params.genome].onekg_indels_index))
+    onekg_omni = Channel.value(file(params.genomes[params.genome].onekg_omni))
+    onekg_omni_index = Channel.value(file(params.genomes[params.genome].onekg_omni_index))
+
+
     return [
-        variantSets]
+        variantSets,
+        _fasta_,
+        _dict_,
+        _fastaFai_,
+        _dbsnp_,
+        dbsnp_index,
+        hapmap,
+        hapmap_index,
+        onekg_snps,
+        onekg_snps_index,
+        onekg_indels,
+        onekg_indels_index,
+        onekg_indels,
+        onekg_indels_index]
 
 }
 
