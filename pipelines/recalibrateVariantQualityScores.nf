@@ -26,7 +26,7 @@ workflow {
      dbsnp,
      dbsnpIndex,
      hapmap,
-     hapmapIndex
+     hapmapIndex,
      onekgSnps,
      onekgSnpsIndex,
      onekgIndels,
