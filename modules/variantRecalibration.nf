@@ -1,6 +1,6 @@
 process GetVariantRecalibrationReport {
     label 'cpus_1'
-    label 'withGatkContainer'
+    //label 'withGatkContainer'
 
     tag "${variantCaller}-${idSample}"
 
