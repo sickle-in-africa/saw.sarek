@@ -18,5 +18,5 @@ workflow {
         = initializeInputChannelsForVariantRecalibration()
 
 
-    variantSetsFromInput.view()
+    variantSetsFromInput.dump(tag: 'variant sets')
 }
