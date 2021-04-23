@@ -29,11 +29,11 @@ process GetVariantRecalibrationReport {
         gatk VariantRecalibrator \
             -R ${fasta} \
             -V ${vcf} \
-            --resource:hapmap,known=false,training=true,truth=true,prior=15.0 ${hapmap} \
-            --resource:1000G,known=false,training=true,truth=false,prior=10.0 ${onekgSnps} \
-            --resource:1000G,known=false,training=true,truth=false,prior=10.0 ${onekgIndels} \
-            --resource:omni,known=false,training=true,truth=false,prior=12.0 ${onekgOmni} \
-            --resource:dbsnp,known=true,training=false,truth=false,prior=2.0 ${dbsnp} \
+            --resource hapmap,known=false,training=true,truth=true,prior=15.0:${hapmap} \
+            --resource 1000G,known=false,training=true,truth=false,prior=10.0:${onekgSnps} \
+            --resource 1000G,known=false,training=true,truth=false,prior=10.0:${onekgIndels} \
+            --resource omni,known=false,training=true,truth=false,prior=12.0:${onekgOmni} \
+            --resource dbsnp,known=true,training=false,truth=false,prior=2.0:${dbsnp} \
             -an QD \
             -an MQ \
             -an MQRankSum \
