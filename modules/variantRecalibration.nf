@@ -26,7 +26,7 @@ process GetVariantRecalibrationReport {
 
     script:
         """
-        gatk IndexFeatureFile -F ${vcf}
+        gatk IndexFeatureFile -I ${vcf}
 
         gatk VariantRecalibrator \
             -R ${fasta} \
