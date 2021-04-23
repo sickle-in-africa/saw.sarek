@@ -380,11 +380,11 @@ def initializeInputChannelsForVariantRecalibration() {
           .flatten().map{vcf -> ['FreeBayes', vcf.minus(vcf.fileName)[-2].toString(), vcf]},          
         )
 
-    _fasta_ = params.fasta ? Channel.value(file(params.genomes[params.genome].fasta)) : getInactiveChannel('fasta')
-    _dict_ = params.dict ? Channel.value(file(params.genomes[params.genome].dict)) : getInactiveChannel('dict')
-    _fastaFai_ = params.fasta_fai ? Channel.value(file(params.genomes[params.genome].fasta_fai)) : getInactiveChannel('fastaFai')
-    _dbsnp_ = params.dbsnp ? Channel.value(file(params.genomes[params.genome].dbsnp)) : getInactiveChannel('dbsnp')
-    dbsnp_index = params.dbsnp_index ? Channel.value(file(params.genomes[params.genome].dbsnp_index)) : getInactiveChannel('dbsnpIndex')
+    _fasta_ = Channel.value(file(params.genomes[params.genome].fasta))
+    _dict_ = Channel.value(file(params.genomes[params.genome].dict))
+    _fastaFai_ = Channel.value(file(params.genomes[params.genome].fasta_fai))
+    _dbsnp_ = Channel.value(file(params.genomes[params.genome].dbsnp))
+    dbsnp_index = Channel.value(file(params.genomes[params.genome].dbsnp_index))
     hapmap = Channel.value(file(params.genomes[params.genome].hapmap))
     hapmap_index = Channel.value(file(params.genomes[params.genome].hapmap_index))
     onekg_snps = Channel.value(file(params.genomes[params.genome].onekg_snps))
