@@ -38,6 +38,7 @@ workflow {
 
     variantRecalibrationReports\
         = GetVariantRecalibrationReport(
+            variantSetsFromInput,
             referenceSequenceFasta,
             referenceSequenceDictionary,
             referenceSequenceIndex,
