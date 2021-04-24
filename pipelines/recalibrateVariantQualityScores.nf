@@ -39,6 +39,7 @@ workflow {
      axiomExomePlusIndex)\
         = initializeInputChannelsForVariantRecalibration()
 
+    /*
 
     indelRecalibrationReports\
         = GetIndelRecalibrationReport(
@@ -53,8 +54,6 @@ workflow {
     RecalibrateIndelQualityScores(
         variantSetsFromInput,
         indelRecalibrationReports)
-
-    /*
 
     variantRecalibrationReports\
         = GetVariantRecalibrationReport(
