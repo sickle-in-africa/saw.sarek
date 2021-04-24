@@ -49,11 +49,14 @@ workflow {
             dbsnp,
             dbsnpIndex)
 
-    /*
 
     RecalibrateIndelQualityScores(
         variantSetsFromInput,
         indelRecalibrationReports)
+
+    /*
+
+    // these processes below are depricated:
 
     variantRecalibrationReports\
         = GetVariantRecalibrationReport(
