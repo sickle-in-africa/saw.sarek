@@ -375,9 +375,29 @@ def initializeInputChannelsForVariantRecalibration() {
     
     variantSets = Channel.empty().mix(
         Channel.fromPath("${params.outdir}/VariantCalling/*/HaplotypeCaller/*.vcf.gz")
-          .flatten().map{vcf -> ['HaplotypeCaller', vcf.minus(vcf.fileName)[-2].toString(), vcf]},
-       Channel.fromPath("${params.outdir}/VariantCalling/*/FreeBayes/*.vcf.gz")
-          .flatten().map{vcf -> ['FreeBayes', vcf.minus(vcf.fileName)[-2].toString(), vcf]},          
+            .flatten()
+            .map{
+                vcf -> 
+                def variantCaller = 'HaplotypeCaller'
+                def idSample = vcf.minus(vcf.fileName)[-2].toString()
+                def vcfIndex = "${params.outdir}/Annotation/*/HaplotypeCaller/*.vcf.gz.tbi"
+                [variantCaller, idSample, vcf, vcfIndex]},
+        Channel.fromPath("${params.outdir}/Annotation/*/Strelka/*variants.vcf.gz")
+            .flatten()
+            .map{
+                vcf -> 
+                def variantCaller = 'Strelka'
+                def idSample = vcf.minus(vcf.fileName)[-2].toString()
+                def vcfIndex = "${params.outdir}/Annotation/*/Strelka/*variants.vcf.gz.tbi"
+                [variantCaller, idSample, vcf, vcfIndex]},
+        Channel.fromPath("${params.outdir}/Annotation/*/FreeBayes/*.vcf.gz")
+            .flatten()
+            .map{
+                vcf -> 
+                def variantCaller = 'FreeBayes'
+                def idSample = vcf.minus(vcf.fileName)[-2].toString()
+                def vcfIndex = "${params.outdir}/Annotation/*/FreeBayes/*.vcf.gz.tbi"
+                [variantCaller, idSample, vcf, vcfIndex]},          
         )
 
     _fasta_ = Channel.value(file(params.genomes[params.genome].fasta))
@@ -393,6 +413,8 @@ def initializeInputChannelsForVariantRecalibration() {
     onekg_indels_index = Channel.value(file(params.genomes[params.genome].onekg_indels_index))
     onekg_omni = Channel.value(file(params.genomes[params.genome].onekg_omni))
     onekg_omni_index = Channel.value(file(params.genomes[params.genome].onekg_omni_index))
+    axiom_exome_plus = Channel.value(file(params.genomes[params.genome].axiom_exome_plus))
+    axiom_exome_plus_index = Channel.value(file(params.genomes[params.genome].axiom_exome_plus_index))
 
 
     return [
@@ -409,7 +431,9 @@ def initializeInputChannelsForVariantRecalibration() {
         onekg_indels,
         onekg_indels_index,
         onekg_omni,
-        onekg_omni_index]
+        onekg_omni_index,
+        axiom_exome_plus,
+        axiom_exome_plus_index]
 
 }
 

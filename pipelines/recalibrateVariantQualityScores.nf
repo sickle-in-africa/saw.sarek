@@ -13,6 +13,8 @@ include {
 } from "${params.modulesDir}/inputs.nf"
 
 include {
+    GetIndelRecalibrationReport;
+    RecalibrateIndelQualityScores;
     GetVariantRecalibrationReport;
     RecalibrateVariantQualityScores
 } from "${params.modulesDir}/variantRecalibration.nf"
@@ -32,9 +34,27 @@ workflow {
      onekgIndels,
      onekgIndelsIndex,
      onekgOmni,
-     onekgOmniIndex)\
+     onekgOmniIndex,
+     axiomExomePlus,
+     axiomExomePlusIndex)\
         = initializeInputChannelsForVariantRecalibration()
 
+
+    indelRecalibrationReports\
+        = GetIndelRecalibrationReport(
+            variantSetsFromInput,
+            onekgIndels,
+            onekgIndelsIndex,
+            axiomExomePlus,
+            axiomExomePlusIndex,
+            dbsnp,
+            dbsnpIndex)
+
+    RecalibrateIndelQualityScores(
+        variantSetsFromInput,
+        indelRecalibrationReports)
+
+    /*
 
     variantRecalibrationReports\
         = GetVariantRecalibrationReport(
@@ -57,5 +77,7 @@ workflow {
     RecalibrateVariantQualityScores(
         variantSetsFromInput,
         variantRecalibrationReports)
+
+    /**/
 
 }
