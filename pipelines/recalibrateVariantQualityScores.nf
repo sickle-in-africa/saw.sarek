@@ -56,30 +56,6 @@ workflow {
 
     /*
 
-    // these processes below are depricated:
-
-    variantRecalibrationReports\
-        = GetVariantRecalibrationReport(
-            variantSetsFromInput,
-            referenceSequenceFasta,
-            referenceSequenceDictionary,
-            referenceSequenceIndex,
-            dbsnp,
-            dbsnpIndex,
-            hapmap,
-            hapmapIndex,
-            onekgSnps,
-            onekgSnpsIndex,
-            onekgIndels,
-            onekgIndelsIndex,
-            onekgOmni,
-            onekgOmniIndex)
-
-
-    RecalibrateVariantQualityScores(
-        variantSetsFromInput,
-        variantRecalibrationReports)
-
     /**/
 
 }
