@@ -39,6 +39,11 @@ workflow {
      axiomExomePlusIndex)\
         = initializeInputChannelsForVariantRecalibration()
 
+    variantSetsFromInput.view()
+
+
+/*
+
     indelRecalibrationReports\
         = GetIndelRecalibrationReport(
             variantSetsFromInput,

@@ -380,7 +380,7 @@ def initializeInputChannelsForVariantRecalibration() {
                 vcf -> 
                 def variantCaller = 'HaplotypeCaller'
                 def idSample = vcf.minus(vcf.fileName)[-2].toString()
-                def vcfIndex = "${params.outdir}/Annotation/*/HaplotypeCaller/*.vcf.gz.tbi"
+                def vcfIndex = path("${params.outdir}/Annotation/*/HaplotypeCaller/*.vcf.gz.tbi")
                 [variantCaller, idSample, vcf, vcfIndex]},
         Channel.fromPath("${params.outdir}/Annotation/*/Strelka/*variants.vcf.gz")
             .flatten()
@@ -388,7 +388,7 @@ def initializeInputChannelsForVariantRecalibration() {
                 vcf -> 
                 def variantCaller = 'Strelka'
                 def idSample = vcf.minus(vcf.fileName)[-2].toString()
-                def vcfIndex = "${params.outdir}/Annotation/*/Strelka/*variants.vcf.gz.tbi"
+                def vcfIndex = path("${params.outdir}/Annotation/*/Strelka/*variants.vcf.gz.tbi")
                 [variantCaller, idSample, vcf, vcfIndex]},
         Channel.fromPath("${params.outdir}/Annotation/*/FreeBayes/*.vcf.gz")
             .flatten()
@@ -396,8 +396,8 @@ def initializeInputChannelsForVariantRecalibration() {
                 vcf -> 
                 def variantCaller = 'FreeBayes'
                 def idSample = vcf.minus(vcf.fileName)[-2].toString()
-                def vcfIndex = "${params.outdir}/Annotation/*/FreeBayes/*.vcf.gz.tbi"
-                [variantCaller, idSample, vcf, vcfIndex]},          
+                def vcfIndex = path("${params.outdir}/Annotation/*/FreeBayes/*.vcf.gz.tbi")
+                [variantCaller, idSample, vcf, vcfIndex]}
         )
 
     _fasta_ = Channel.value(file(params.genomes[params.genome].fasta))
