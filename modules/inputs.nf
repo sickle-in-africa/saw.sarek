@@ -374,30 +374,27 @@ def initializeInputChannelsForAnnotation() {
 def initializeInputChannelsForVariantRecalibration() {
     
     variantSets = Channel.empty().mix(
-        Channel.fromPath(
-                ["${params.outdir}/Annotation/*/HaplotypeCaller/*.vcf.gz","${params.outdir}/Annotation/*/HaplotypeCaller/*.vcf.gz.tbi"])
+        Channel.fromPath("${params.outdir}/VariantCalling/*/HaplotypeCaller/*.vcf.gz")
             .flatten()
             .map{
-                [vcf, vcfIndex] -> 
+                vcf -> 
                 def variantCaller = 'HaplotypeCaller'
                 def idSample = vcf.minus(vcf.fileName)[-2].toString()
-                [variantCaller, idSample, vcf, vcfIndex]},
-        Channel.fromPath(
-                ["${params.outdir}/Annotation/*/Strelka/*variants.vcf.gz","${params.outdir}/Annotation/*/Strelka/*variants.vcf.gz.tbi"])
+                [variantCaller, idSample, vcf]},
+        Channel.fromPath("${params.outdir}/VariantCalling/*/Strelka/*variants.vcf.gz")
             .flatten()
             .map{
-                [vcf, vcfIndex] -> 
+                vcf -> 
                 def variantCaller = 'Strelka'
                 def idSample = vcf.minus(vcf.fileName)[-2].toString()
-                [variantCaller, idSample, vcf, vcfIndex]},
-        Channel.fromPath(
-                ["${params.outdir}/Annotation/*/FreeBayes/*.vcf.gz","${params.outdir}/Annotation/*/FreeBayes/*.vcf.gz.tbi"])
+                [variantCaller, idSample, vcf]},
+        Channel.fromPath("${params.outdir}/VariantCalling/*/FreeBayes/*.vcf.gz")
             .flatten()
             .map{
-                [vcf, vcfIndex] -> 
+                vcf ->
                 def variantCaller = 'FreeBayes'
                 def idSample = vcf.minus(vcf.fileName)[-2].toString()
-                [variantCaller, idSample, vcf, vcfIndex]})
+                [variantCaller, idSample, vcf]})
 
     _fasta_ = Channel.value(file(params.genomes[params.genome].fasta))
     _dict_ = Channel.value(file(params.genomes[params.genome].dict))

@@ -13,6 +13,7 @@ include {
 } from "${params.modulesDir}/inputs.nf"
 
 include {
+    PrintMessage;
     GetIndelRecalibrationReport;
     RecalibrateIndelQualityScores;
     GetVariantRecalibrationReport;
@@ -39,11 +40,6 @@ workflow {
      axiomExomePlusIndex)\
         = initializeInputChannelsForVariantRecalibration()
 
-    variantSetsFromInput.view()
-
-
-/*
-
     indelRecalibrationReports\
         = GetIndelRecalibrationReport(
             variantSetsFromInput,
@@ -54,6 +50,7 @@ workflow {
             dbsnp,
             dbsnpIndex)
 
+/*
 
     RecalibrateIndelQualityScores(
         variantSetsFromInput,
@@ -64,3 +61,19 @@ workflow {
     /**/
 
 }
+
+/*
+process PrintMessage {
+
+    input:
+        tuple val(variantCaller), val(idSample), path(vcf)
+
+    output:
+        stdout
+
+    script:
+        """
+        echo ${vcf}
+        """
+}
+*/

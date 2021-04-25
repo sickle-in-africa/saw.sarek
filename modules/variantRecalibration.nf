@@ -1,9 +1,25 @@
+process PrintMessage {
+
+    input:
+    tuple val(variantCaller), val(idSample), path(vcf)
+
+    output: 
+        stdout
+
+    script:
+        """
+        echo "${vcf}"
+        """
+}
+
+
+
 process GetIndelRecalibrationReport {
     label 'cpus_1'
     tag "${variantCaller}-${idSample}"
 
     input:
-        tuple val(variantCaller), val(idSample), path(vcf), path(vcfIndex)
+        tuple val(variantCaller), val(idSample), path(vcf)
         path onekgIndels
         path onekgIndelsIndex
         path axiomExomePlus
@@ -12,10 +28,13 @@ process GetIndelRecalibrationReport {
         path dbsnpIndex
 
     output:
-        tuple path("${variantCaller}_${idSample}_indels.recal") path("${variantCaller}_${idSample}_indels.tranches")     
+        tuple path("${variantCaller}_${idSample}_indels.recal"), path("${variantCaller}_${idSample}_indels.tranches")
 
     script:
         """
+        gatk IndexFeatureFile \
+            -I ${vcf}
+
         gatk --java-options "-Xmx${task.memory.toGiga()}g -Xms${task.memory.toGiga()}g" VariantRecalibrator \
             -V ${vcf} \
             --trust-all-polymorphic \
@@ -23,9 +42,9 @@ process GetIndelRecalibrationReport {
             -an FS -an ReadPosRankSum -an MQRankSum -an QD -an SOR -an DP \
             -mode INDEL \
             --max-gaussians 4 \
-            -resource:mills,known=false,training=true,truth=true,prior=12:${onekgIndels} \
-            -resource:axiomPoly,known=false,training=true,truth=false,prior=10:${axiomExomePlus} \
-            -resource:dbsnp,known=true,training=false,truth=false,prior=2:${dbsnp} \
+            -resource:mills,known=false,training=true,truth=true,prior=12 ${onekgIndels} \
+            -resource:axiomPoly,known=false,training=true,truth=false,prior=10 ${axiomExomePlus} \
+            -resource:dbsnp,known=true,training=false,truth=false,prior=2 ${dbsnp} \
             -O ${variantCaller}_${idSample}_indels.recal \
             --tranches-file ${variantCaller}_${idSample}_indels.tranches
         """
