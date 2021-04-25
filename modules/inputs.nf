@@ -397,8 +397,7 @@ def initializeInputChannelsForVariantRecalibration() {
                 [vcf, vcfIndex] -> 
                 def variantCaller = 'FreeBayes'
                 def idSample = vcf.minus(vcf.fileName)[-2].toString()
-                [variantCaller, idSample, vcf, vcfIndex]}
-        )
+                [variantCaller, idSample, vcf, vcfIndex]})
 
     _fasta_ = Channel.value(file(params.genomes[params.genome].fasta))
     _dict_ = Channel.value(file(params.genomes[params.genome].dict))
