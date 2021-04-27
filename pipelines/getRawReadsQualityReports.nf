@@ -9,7 +9,8 @@ nextflow.enable.dsl=2
 
 include {
     GetSoftwareVersions;
-} from "${params.modulesDir}/sarek.nf"
+    initializeInputChannelsForCalling
+} from "${params.modulesDir}/inputs.nf"
 
 include {
     initializeInputChannelsForRawReadQualityReporting
@@ -36,6 +37,8 @@ workflow {
      ch_multiqc_config)\
         = initializeInputChannelsForRawReadQualityReporting()
 
+    softwareVersions = GetSoftwareVersions()
+
     (readGroupsAsBam,\
      readGroupsAsFastq)\
         = branchReadGroupsIntoBamOrFastqChannels(\
@@ -52,13 +55,13 @@ workflow {
     rawReadGroupQualityReports\
         = fastqQualityReports
             .mix(unmappedBamQualityReports)
+            .collect()
 
     ch_software_versions_yaml\
         = GetSoftwareVersions()
-        .collect()  
 
     SaveCohortRawReadsQualityReport(
             ch_multiqc_config,
-            ch_software_versions_yaml,
-            rawReadGroupQualityReports.collect())
+            ch_software_versions_yaml.collect(),
+            rawReadGroupQualityReports)
 }
