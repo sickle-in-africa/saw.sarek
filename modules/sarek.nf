@@ -847,7 +847,7 @@ def groupByPatientSample(inputChannel) {
 
 
 process GetSoftwareVersions {
-    publishDir "${params.outdir}/pipeline_info", mode: params.publish_dir_mode,
+    publishDir "${params.outdir}/pipeline_info", mode: 'copy',
         saveAs: {it.indexOf(".csv") > 0 ? it : null}
 
     output:
