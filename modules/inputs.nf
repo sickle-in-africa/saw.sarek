@@ -112,6 +112,49 @@ def initializeInputChannelsForMapping() {
 
 }
 
+def initializeInputChannelsForRawReadQualityReporting() {
+
+    step = 'mapping'
+    tools = getInputTools(step)
+    skipQC = getInputSkipQC()
+    annotate_tools = getInputListOfAnnotationTools()
+    tsvPath = getInputTsvPath(step)
+
+    initializeParamsScope(step, tools)
+
+    checkHostname()
+    checkInputReferenceGenomeExists()
+    checkInputStepIsValid(step)
+    checkInputToolsExist(tools)
+    checkInputSkippedQCToolsExist(skipQC)
+    checkInputListOfAnnotationToolsValid(annotate_tools)
+    checkInputAscatParametersValid()
+    checkInputReadStructureParametersValid()
+    checkAwsBatchSettings()
+    checkInputTsvPath(tsvPath)
+
+    inputSample = getInputSampleListAsChannel(tsvPath, step)
+
+    (__genderMap__, __statusMap__, inputSample) = extractInfos(inputSample)
+
+    _fasta_ = params.fasta ? Channel.value(file(params.fasta)) : getInactiveChannel()
+    _bwa_ = params.bwa ? Channel.value(file(params.bwa)) : getInactiveChannel()
+    _fastaFai_ = params.fasta_fai ? Channel.value(file(params.fasta_fai)) : getInactiveChannel()
+
+    ch_multiqc_config = Channel.value(file("$projectDir/assets/multiqc_config.yaml"))
+
+
+    return [
+        inputSample,
+        _fasta_,
+        _bwa_,
+        _fastaFai_,
+        __genderMap__,
+        __statusMap__,
+        ch_multiqc_config]
+
+}
+
 def initializeInputChannelsForCalling() {
 
     step = 'variantcalling'
