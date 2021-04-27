@@ -53,10 +53,12 @@ workflow {
         = fastqQualityReports
             .mix(unmappedBamQualityReports)
 
-    ch_software_versions_yaml = GetSoftwareVersions()    
+    ch_software_versions_yaml\
+        = GetSoftwareVersions()
+        .collect()  
 
     SaveCohortRawReadsQualityReport(
             ch_multiqc_config,
-            ch_software_versions_yaml.collect(),
+            ch_software_versions_yaml,
             rawReadGroupQualityReports.collect())
 }
