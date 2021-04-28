@@ -14,7 +14,7 @@ process FilterVariantsFromFreebayes {
 
 
 def branchIntoGatkStrelkaOrFreebayesChannels(variantSets) {
-    result = groupsOfReadGroups
+    result = variantSets
         .branch {
             gatk: it[1] == 'HaplotypeCaller'
             strelka: it[1] == 'Strelka'
