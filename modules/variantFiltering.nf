@@ -12,7 +12,6 @@ process FilterVariantsFromFreebayes {
 
 }
 
-
 def branchIntoGatkStrelkaOrFreebayesChannels(variantSets) {
     result = variantSets
         .branch {

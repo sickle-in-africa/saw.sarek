@@ -26,6 +26,7 @@ include {
 } from "${params.modulesDir}/inputs.nf"
 
 include {
+    FilterVariantsFromFreebayes;
     branchIntoGatkStrelkaOrFreebayesChannels;
 } from "${params.modulesDir}/variantFiltering.nf"
 
