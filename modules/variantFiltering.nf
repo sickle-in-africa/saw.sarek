@@ -15,13 +15,13 @@ process FilterVariantsFromFreebayes {
 def branchIntoGatkStrelkaOrFreebayesChannels(variantSets) {
     result = variantSets
         .branch {
-            gatk: it[1] == 'HaplotypeCaller'
-            strelka: it[1] == 'Strelka'
-            freebayes: it[1] == 'FreeBayes'
+            gatk: it[0] == 'HaplotypeCaller'
+            strelka: it[0] == 'Strelka'
+            freebayes: it[0] == 'FreeBayes'
         }
 
     return [
-        result.gatk, 
+        result.gatk,
         result.strelka,
-        result.freebayes]   
+        result.freebayes]
 }

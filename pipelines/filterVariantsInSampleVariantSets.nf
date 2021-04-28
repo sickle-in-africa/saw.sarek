@@ -39,6 +39,8 @@ workflow {
         = initializeInputChannelsForSampleVariantSetFiltering()
 
     // branch into GATK, Freebayes, and Strelka channels
+    variantSets.ifEmpty('empty').view()
+
     (variantSetsFromGatk,
      variantSetsFromStrelka,
      variantSetsFromFreebayes)\
@@ -51,6 +53,7 @@ workflow {
     // filter strelka
 
     // filter freebayes
+    variantSetsFromFreebayes.view()
     FilterVariantsFromFreebayes(variantSetsFromFreebayes)
 
 
