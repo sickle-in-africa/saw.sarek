@@ -27,6 +27,7 @@ include {
 
 include {
     FilterVariantsFromFreebayes;
+    FilterVariantsFromStrelka;
     branchIntoGatkStrelkaOrFreebayesChannels;
 } from "${params.modulesDir}/variantFiltering.nf"
 
@@ -39,7 +40,6 @@ workflow {
         = initializeInputChannelsForSampleVariantSetFiltering()
 
     // branch into GATK, Freebayes, and Strelka channels
-    variantSets.ifEmpty('empty').view()
 
     (variantSetsFromGatk,
      variantSetsFromStrelka,
@@ -50,10 +50,12 @@ workflow {
     // filter gatk
 
     // filter strelka
+    variantSetsFromStrelka.ifEmpty('empty').view()
+    FilterVariantsFromStrelka(variantSetsFromStrelka)
 
     // filter freebayes
-    variantSetsFromFreebayes.view()
-    FilterVariantsFromFreebayes(variantSetsFromFreebayes)
+    variantSetsFromFreebayes.ifEmpty('empty').view()
+    // FilterVariantsFromFreebayes(variantSetsFromFreebayes)
 
 
 }
