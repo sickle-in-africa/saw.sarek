@@ -9,7 +9,6 @@ nextflow.enable.dsl=2
 
 include {
     GetSoftwareVersions;
-    initializeInputChannelsForCalling
 } from "${params.modulesDir}/inputs.nf"
 
 include {
@@ -23,7 +22,7 @@ include {
 include {
     GetFastqcQualityReport;
     GetUnmappedBamQualityReport;
-    GetCohortRawReadsQualityReport;
+    SaveCohortRawReadsQualityReport;
 } from "${params.modulesDir}/qualityReports.nf"
 
 workflow {

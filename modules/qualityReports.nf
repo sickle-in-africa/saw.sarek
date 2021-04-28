@@ -38,7 +38,7 @@ process GetUnmappedBamQualityReport {
     """
 }
 
-process GetCohortRawReadsQualityReport {
+process SaveCohortRawReadsQualityReport {
     publishDir "${params.outdir}/Reports/MultiQC", mode: params.publish_dir_mode
 
     input:
