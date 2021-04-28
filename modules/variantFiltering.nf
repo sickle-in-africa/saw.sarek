@@ -7,7 +7,7 @@ process FilterVariantsFromFreebayes {
 
     script:
         """
-        vcffilter -f "QUAL > 20" ${vcf} > ${vcf}
+        bcftools view -i'QUAL>20 && DP>10' > ${vcf}
         """
 
 }
