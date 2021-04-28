@@ -47,7 +47,6 @@ workflow {
         = branchIntoGatkStrelkaOrFreebayesChannels(
             variantSets)
 
-
     // filter gatk
 
     // filter strelka
