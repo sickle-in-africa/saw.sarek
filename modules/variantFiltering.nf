@@ -1,3 +1,7 @@
+include {
+    reduceVCF
+} from "${params.modulesDir}/sarek.nf"
+
 process FilterVariantsFromFreebayes {
 
     publishDir "${params.outdir}/Filtered/${idSample}/Freebayes", mode: 'copy'
@@ -6,8 +10,10 @@ process FilterVariantsFromFreebayes {
         tuple val(variantCaller), val(idSample), path(vcf)
 
     script:
+        outputVcf = reduceVCF(vcf) + '.filtered.vcf'
         """
-        bcftools view -i'QUAL>20 && DP>10' > ${vcf}
+        bcftools view -i'QUAL>20 && DP>10' ${vcf} > ${outputVcf}
+        gzip ${outputVcf}
         """
 
 }
