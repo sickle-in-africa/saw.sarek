@@ -20,10 +20,7 @@ nextflow.enable.dsl=2
 
 include {
     GetSoftwareVersions;
-} from "${params.modulesDir}/inputs.nf"
-
-include {
-    initializeInputChannelsForRawReadQualityReporting
+    initializeInputChannelsForRawReadQualityReporting;
 } from "${params.modulesDir}/inputs.nf"
 
 include {

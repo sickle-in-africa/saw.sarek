@@ -476,6 +476,43 @@ def initializeInputChannelsForVariantRecalibration() {
 
 }
 
+def initializeInputChannelsForSampleVariantSetFiltering() {
+    
+    variantSets = Channel.empty().mix(
+        Channel.fromPath("${params.outdir}/VariantCalling/*/HaplotypeCaller/*.vcf.gz")
+            .flatten()
+            .map{
+                vcf -> 
+                def variantCaller = 'HaplotypeCaller'
+                def idSample = vcf.minus(vcf.fileName)[-2].toString()
+                [variantCaller, idSample, vcf]},
+        Channel.fromPath("${params.outdir}/VariantCalling/*/Strelka/*variants.vcf.gz")
+            .flatten()
+            .map{
+                vcf -> 
+                def variantCaller = 'Strelka'
+                def idSample = vcf.minus(vcf.fileName)[-2].toString()
+                [variantCaller, idSample, vcf]},
+        Channel.fromPath("${params.outdir}/VariantCalling/*/FreeBayes/*.vcf.gz")
+            .flatten()
+            .map{
+                vcf ->
+                def variantCaller = 'FreeBayes'
+                def idSample = vcf.minus(vcf.fileName)[-2].toString()
+                [variantCaller, idSample, vcf]})
+
+    _fasta_ = Channel.value(file(params.genomes[params.genome].fasta))
+    _dict_ = Channel.value(file(params.genomes[params.genome].dict))
+    _fastaFai_ = Channel.value(file(params.genomes[params.genome].fasta_fai))
+
+    return [
+        variantSets,
+        _fasta_,
+        _dict_,
+        _fastaFai_]
+
+}
+
 def initializeParamsScope(inputStep, inputToolsList) {
   // Initialize each params in params.genomes, catch the command line first if it was defined
   // params.fasta has to be the first one
