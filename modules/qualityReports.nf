@@ -4,7 +4,7 @@ process GetFastqcQualityReport {
 
     tag "${idPatient}-${idRun}"
 
-    publishDir "${params.outdir}/Reports/${idSample}/FastQC/${idSample}_${idRun}", mode: params.publish_dir_mode
+    publishDir "${params.outdir}/Reports/${idSample}/FastQC/${idSample}_${idRun}", mode: 'copy'
 
     input:
         tuple val(idPatient), val(idSample), val(idRun), path("${idSample}_${idRun}_R1.fastq.gz"), path("${idSample}_${idRun}_R2.fastq.gz")
@@ -24,7 +24,7 @@ process GetUnmappedBamQualityReport {
 
     tag "${idPatient}-${idRun}"
 
-    publishDir "${params.outdir}/Reports/${idSample}/FastQC/${idSample}_${idRun}", mode: params.publish_dir_mode
+    publishDir "${params.outdir}/Reports/${idSample}/FastQC/${idSample}_${idRun}", mode: 'copy'
 
     input:
         tuple val(idPatient), val(idSample), val(idRun), path("${idSample}_${idRun}.bam")

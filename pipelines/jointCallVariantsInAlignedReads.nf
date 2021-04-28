@@ -128,7 +128,8 @@ workflow {
         = CallVariantsWithStrelka(\
             sampleReadGroups,\
             referenceSequenceFasta,\
-            referenceSequenceIndex)
+            referenceSequenceIndex,
+            referenceIntervalList)
 
     (variantSetsFromFreebayes)\
         = CallVariantsWithFreebayes(\

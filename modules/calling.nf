@@ -88,6 +88,7 @@ process CallVariantsWithStrelka {
         tuple val(idPatient), val(idSample), file(bam), file(bai)
         file(fasta)
         file(fastaFai)
+        file(intervalList)
 
     output:
         tuple val(idPatient), val(idSample), val("Strelka"), file("*.vcf.gz"), file("*.vcf.gz.tbi")
@@ -97,6 +98,7 @@ process CallVariantsWithStrelka {
     configureStrelkaGermlineWorkflow.py \
         --bam ${bam} \
         --referenceFasta ${fasta} \
+        ----callRegions ${intervalList} \
         --runDir Strelka
 
     python Strelka/runWorkflow.py -m local -j ${task.cpus}

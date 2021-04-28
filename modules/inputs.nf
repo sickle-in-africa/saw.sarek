@@ -141,7 +141,7 @@ def initializeInputChannelsForRawReadQualityReporting() {
     _bwa_ = params.bwa ? Channel.value(file(params.bwa)) : getInactiveChannel()
     _fastaFai_ = params.fasta_fai ? Channel.value(file(params.fasta_fai)) : getInactiveChannel()
 
-    ch_multiqc_config = Channel.value(file("$projectDir/assets/multiqc_config.yaml"))
+    ch_multiqc_config = Channel.value(file("${params.sarekDir}/assets/multiqc_config.yaml"))
 
 
     return [

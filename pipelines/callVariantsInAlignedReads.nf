@@ -9,13 +9,10 @@
  *      interval/bed file) and then calls variants in the sample read groups 
  *      for a range of variant callers. 
  *      
- *      The callers are either for snvs and small indels:
+ *      The callers are for snvs and small indels:
  *          + gatk 4 Haplotype caller
  *          + strelka
  *          + freebayes
- *      or for structural variants:
- *          + manta
- *          + tiddit
  *
  *      Calling variants on intervals is helpful for speeding up the process, 
  *      by parralellising over each interval, however it is only possible for 
@@ -133,20 +130,8 @@ workflow {
         = CallVariantsWithStrelka(\
             sampleReadGroups,\
             referenceSequenceFasta,\
-            referenceSequenceIndex)
-
-    //(sampleVariantSetsFromManta)\
-    //    = CallVariantsWithManta(\
-    //        sampleReadGroups,\
-    //        referenceSequenceFasta,\
-    //        referenceSequenceIndex)
-
-    (sampleVariantSetsFromTiddit,\
-     tidditOut)\
-        = CallVariantsWithTiddit(\
-            sampleReadGroups,\
-            referenceSequenceFasta,\
-            referenceSequenceIndex)
+            referenceSequenceIndex,
+            referenceIntervalList)
 
     (variantSetsFromFreebayes)\
         = CallVariantsWithFreebayes(\
@@ -173,9 +158,7 @@ workflow {
 
     sampleVariantSets\
         = sampleVariantSetsFromGatkAndFreebayes.mix(
-            sampleVariantSetsFromStrelka,
-            //sampleVariantSetsFromManta,
-            sampleVariantSetsFromTiddit)
+            sampleVariantSetsFromStrelka)
 
     writeInputsForNextStep(
         sampleVariantSets,
