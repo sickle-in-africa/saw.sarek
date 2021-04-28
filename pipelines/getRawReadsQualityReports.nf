@@ -36,7 +36,7 @@ workflow {
      ch_multiqc_config)\
         = initializeInputChannelsForRawReadQualityReporting()
 
-    softwareVersions = GetSoftwareVersions()
+    softwareVersions = GetSoftwareVersions().collect()
 
     (readGroupsAsBam,\
      readGroupsAsFastq)\
@@ -56,11 +56,8 @@ workflow {
             .mix(unmappedBamQualityReports)
             .collect()
 
-    ch_software_versions_yaml\
-        = GetSoftwareVersions()
-
     SaveCohortRawReadsQualityReport(
             ch_multiqc_config,
-            ch_software_versions_yaml.collect(),
+            softwareVersions,
             rawReadGroupQualityReports)
 }
